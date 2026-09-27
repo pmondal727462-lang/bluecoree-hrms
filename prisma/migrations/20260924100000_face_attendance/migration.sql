@@ -1,0 +1,12 @@
+ALTER TABLE "employees" ADD COLUMN "faceRequired" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "attendance_policies" ADD COLUMN "faceAttendanceEnabled" BOOLEAN NOT NULL DEFAULT false, ADD COLUMN "faceLivenessRequired" BOOLEAN NOT NULL DEFAULT true, ADD COLUMN "faceConfidenceThreshold" DOUBLE PRECISION NOT NULL DEFAULT 0.8;
+CREATE TABLE "face_profiles" ("id" TEXT NOT NULL, "companyId" TEXT NOT NULL, "employeeId" TEXT NOT NULL, "templateCiphertext" TEXT NOT NULL, "enrolledAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "active" BOOLEAN NOT NULL DEFAULT true, CONSTRAINT "face_profiles_pkey" PRIMARY KEY ("id"));
+CREATE UNIQUE INDEX "face_profiles_employeeId_key" ON "face_profiles"("employeeId");
+CREATE UNIQUE INDEX "face_profiles_employeeId_companyId_key" ON "face_profiles"("employeeId","companyId");
+CREATE INDEX "face_profiles_companyId_employeeId_active_idx" ON "face_profiles"("companyId","employeeId","active");
+ALTER TABLE "face_profiles" ADD CONSTRAINT "face_profiles_companyId_fkey" FOREIGN KEY ("companyId") REFERENCES "companies"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "face_profiles" ADD CONSTRAINT "face_profiles_employeeId_companyId_fkey" FOREIGN KEY ("employeeId","companyId") REFERENCES "employees"("id","companyId") ON DELETE CASCADE ON UPDATE CASCADE;
+CREATE TABLE "face_verification_logs" ("id" TEXT NOT NULL, "companyId" TEXT NOT NULL, "employeeId" TEXT NOT NULL, "attendanceId" TEXT, "status" TEXT NOT NULL, "confidence" DOUBLE PRECISION, "livenessPassed" BOOLEAN NOT NULL DEFAULT false, "reason" TEXT, "deviceId" TEXT, "ip" TEXT, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "face_verification_logs_pkey" PRIMARY KEY ("id"));
+CREATE INDEX "face_verification_logs_companyId_employeeId_createdAt_idx" ON "face_verification_logs"("companyId","employeeId","createdAt");
+ALTER TABLE "face_verification_logs" ADD CONSTRAINT "face_verification_logs_companyId_fkey" FOREIGN KEY ("companyId") REFERENCES "companies"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "face_verification_logs" ADD CONSTRAINT "face_verification_logs_employeeId_companyId_fkey" FOREIGN KEY ("employeeId","companyId") REFERENCES "employees"("id","companyId") ON DELETE CASCADE ON UPDATE CASCADE;

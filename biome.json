@@ -1,0 +1,11 @@
+{
+  "files": { "includes": ["src/**", "tests/**", "scripts/**"] },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": false,
+      "correctness": { "noUnreachable": "error", "noUnsafeFinally": "error", "noInvalidUseBeforeDeclaration": "error" },
+      "suspicious": { "noDebugger": "error", "noDoubleEquals": "error", "noDuplicateObjectKeys": "error", "noDuplicateParameters": "error", "noExplicitAny": "error" }
+    }
+  }
+}

@@ -1,0 +1,10 @@
+CREATE TABLE "employee_devices" ("id" TEXT NOT NULL, "companyId" TEXT NOT NULL, "userId" TEXT NOT NULL, "deviceId" TEXT NOT NULL, "deviceName" TEXT, "platform" TEXT NOT NULL, "osVersion" TEXT, "appVersion" TEXT, "lastSeenAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "active" BOOLEAN NOT NULL DEFAULT true, "registeredAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "employee_devices_pkey" PRIMARY KEY ("id"));
+CREATE UNIQUE INDEX "employee_devices_companyId_userId_deviceId_key" ON "employee_devices"("companyId","userId","deviceId");
+CREATE INDEX "employee_devices_companyId_userId_active_idx" ON "employee_devices"("companyId","userId","active");
+ALTER TABLE "employee_devices" ADD CONSTRAINT "employee_devices_companyId_fkey" FOREIGN KEY ("companyId") REFERENCES "companies"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "employee_devices" ADD CONSTRAINT "employee_devices_userId_companyId_fkey" FOREIGN KEY ("userId","companyId") REFERENCES "users"("id","companyId") ON DELETE CASCADE ON UPDATE CASCADE;
+CREATE TABLE "push_tokens" ("id" TEXT NOT NULL, "companyId" TEXT NOT NULL, "userId" TEXT NOT NULL, "token" TEXT NOT NULL, "platform" TEXT NOT NULL, "active" BOOLEAN NOT NULL DEFAULT true, "lastSeenAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "push_tokens_pkey" PRIMARY KEY ("id"));
+CREATE UNIQUE INDEX "push_tokens_companyId_token_key" ON "push_tokens"("companyId","token");
+CREATE INDEX "push_tokens_companyId_userId_active_idx" ON "push_tokens"("companyId","userId","active");
+ALTER TABLE "push_tokens" ADD CONSTRAINT "push_tokens_companyId_fkey" FOREIGN KEY ("companyId") REFERENCES "companies"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "push_tokens" ADD CONSTRAINT "push_tokens_userId_companyId_fkey" FOREIGN KEY ("userId","companyId") REFERENCES "users"("id","companyId") ON DELETE CASCADE ON UPDATE CASCADE;

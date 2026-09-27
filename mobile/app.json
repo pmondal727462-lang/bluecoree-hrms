@@ -1,0 +1,33 @@
+{
+  "expo": {
+    "name": "BlueCoree HR",
+    "slug": "bluecoree-hr",
+    "scheme": "bluecoreehr",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Your location is recorded with attendance check-in and check-out when your company requires it."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "The camera is used for face attendance when your company enables it."
+        }
+      ],
+      "expo-notifications"
+    ],
+    "ios": { "bundleIdentifier": "com.bluecoree.hr", "supportsTablet": false },
+    "android": {
+      "package": "com.bluecoree.hr",
+      "permissions": ["ACCESS_FINE_LOCATION", "CAMERA", "POST_NOTIFICATIONS"]
+    },
+    "extra": { "apiUrl": "https://hrms.example.com" }
+  }
+}

@@ -1,0 +1,19 @@
+node_modules/
+data/
+*.log
+.env
+.env.*
+!.env.example
+.next/
+coverage/
+test-results/
+playwright-report/
+*.tsbuildinfo
+public/mediapipe/
+
+# Local scratch and mobile build output
+tmp/
+mobile/node_modules/
+mobile/.expo/
+mobile/dist/
+.claude/settings.local.json

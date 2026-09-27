@@ -1,0 +1,21 @@
+# TLS for the main domain and, on demand, for verified white-label domains.
+{
+	email {$ACME_EMAIL}
+	on_demand_tls {
+		# Certificates are issued only for domains the app confirms.
+		ask http://app:3000/api/public/domain-check
+	}
+}
+
+{$APP_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy app:3000
+}
+
+https:// {
+	tls {
+		on_demand
+	}
+	encode zstd gzip
+	reverse_proxy app:3000
+}

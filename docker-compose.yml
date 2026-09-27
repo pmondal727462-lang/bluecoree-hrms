@@ -1,0 +1,62 @@
+# Production-like stack: PostgreSQL, Redis, web app, worker and Caddy (TLS).
+# 1. cp .env.example .env and fill it in (npm run env:init generates secrets).
+#    Use host "db" and "redis" in the connection URLs.
+# 2. docker compose up -d db redis
+# 3. docker compose run --rm app npm run db:migrate
+#    docker compose run --rm app npm run db:roles
+# 4. docker compose up -d
+services:
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: hrms
+      POSTGRES_USER: ${POSTGRES_USER:-hrms_owner}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes: [pgdata:/var/lib/postgresql]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d hrms"]
+      interval: 10s
+      retries: 10
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [redisdata:/data]
+  app:
+    build: .
+    image: hrms:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
+      TRUST_PROXY: "true"
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_started }
+    volumes: [appdata:/app/data]
+  worker:
+    image: hrms:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
+    command: ["npm", "run", "worker"]
+    depends_on: [app]
+    volumes: [appdata:/app/data]
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?set APP_DOMAIN, e.g. hr.example.com}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+    depends_on: [app]
+volumes:
+  pgdata:
+  redisdata:
+  appdata:
+  caddydata:
