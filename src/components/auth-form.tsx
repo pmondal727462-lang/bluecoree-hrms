@@ -21,7 +21,13 @@ const schema = z.object({
   setupToken: z.string().optional(),
 });
 type Values = z.infer<typeof schema>;
-export function AuthForm({ setup = false }: { setup?: boolean }) {
+export function AuthForm({
+  setup = false,
+  owner = false,
+}: {
+  setup?: boolean;
+  owner?: boolean;
+}) {
   const [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [show, setShow] = useState(false),
@@ -34,7 +40,7 @@ export function AuthForm({ setup = false }: { setup?: boolean }) {
     formState: { errors },
   } = useForm<Values>({
     resolver: zodResolver(schema),
-    defaultValues: { companyCode: setup ? "MYCOMPANY" : "" },
+    defaultValues: { companyCode: owner ? "OWNER" : setup ? "MYCOMPANY" : "" },
   });
   useEffect(() => {
     api<{ required: boolean }>("auth/setup")
@@ -47,7 +53,7 @@ export function AuthForm({ setup = false }: { setup?: boolean }) {
   }, [setup]);
   // White-label login: ?company=CODE or a verified custom domain.
   useEffect(() => {
-    if (setup) return;
+    if (setup || owner) return;
     const code = new URLSearchParams(window.location.search).get("company");
     const query = code
       ? `company=${encodeURIComponent(code)}`
@@ -60,7 +66,7 @@ export function AuthForm({ setup = false }: { setup?: boolean }) {
         if (b.portalTitle) document.title = b.portalTitle;
       })
       .catch(() => undefined);
-  }, [setup, setValue]);
+  }, [setup, owner, setValue]);
   const submit = handleSubmit(async (values) => {
     setBusy(true);
     setError("");
@@ -83,20 +89,20 @@ export function AuthForm({ setup = false }: { setup?: boolean }) {
           }),
         });
       else
-        await api("auth/login", {
+        await api(owner ? "auth/owner-login" : "auth/login", {
           method: "POST",
           body: JSON.stringify({
-            companyCode: values.companyCode,
+            ...(!owner ? { companyCode: values.companyCode } : {}),
             identifier: values.identifier,
             password: values.password,
             ...(values.totp
-              ? /^d{6}$/.test(values.totp.trim())
+              ? /^\d{6}$/.test(values.totp.trim())
                 ? { totp: values.totp.trim() }
                 : { recoveryCode: values.totp.trim() }
               : {}),
           }),
         });
-      window.location.href = "/dashboard";
+      window.location.href = owner ? "/admin" : "/dashboard";
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -147,16 +153,24 @@ export function AuthForm({ setup = false }: { setup?: boolean }) {
           <div className="mb-7">
             <BrandLogo branding={brand} width={180} />
           </div>
-          <h1>{setup ? "Create your workspace" : "Welcome back"}</h1>
+          <h1>
+            {owner
+              ? "Software owner sign in"
+              : setup
+                ? "Create your workspace"
+                : "Welcome back"}
+          </h1>
           {brand?.loginMessage && (
             <p className="muted mt-3 whitespace-pre-line">
               {brand.loginMessage}
             </p>
           )}
           <p className="muted mt-3 mb-8 leading-6">
-            {setup
-              ? "Set up your first company and Super Admin account."
-              : "Sign in to your company’s people workspace."}
+            {owner
+              ? "Manage your clients, subscriptions, website pricing, and access rights."
+              : setup
+                ? "Set up your first company and Super Admin account."
+                : "Sign in to your company’s people workspace."}
           </p>
           {error && (
             <div role="alert" className="error mb-5">
@@ -190,24 +204,30 @@ export function AuthForm({ setup = false }: { setup?: boolean }) {
               </label>
             </>
           )}
+          {!owner && (
+            <label>
+              Company code *
+              <input
+                autoComplete="organization"
+                placeholder="e.g. DEMO"
+                {...register("companyCode")}
+              />
+              {errors.companyCode && (
+                <span className="text-red-600">
+                  {errors.companyCode.message}
+                </span>
+              )}
+            </label>
+          )}
           <label>
-            Company code *
-            <input
-              autoComplete="organization"
-              placeholder="e.g. DEMO"
-              {...register("companyCode")}
-            />
-            {errors.companyCode && (
-              <span className="text-red-600">{errors.companyCode.message}</span>
-            )}
-          </label>
-          <label>
-            {setup
-              ? "Admin email address"
-              : "Email, mobile number, or employee code"}{" "}
+            {owner
+              ? "Owner email address"
+              : setup
+                ? "Admin email address"
+                : "Email, mobile number, or employee code"}{" "}
             *
             <input
-              type={setup ? "email" : "text"}
+              type={setup || owner ? "email" : "text"}
               autoComplete="username"
               placeholder={
                 setup ? "you@company.com" : "you@company.com or EMP001"
@@ -253,16 +273,20 @@ export function AuthForm({ setup = false }: { setup?: boolean }) {
                   {...register("totp")}
                 />
               </label>
-              <div className="flex justify-between text-xs text-blue-700 mb-4">
-                <Link href="/forgot-password">Forgot password?</Link>
-                <Link href="/otp">Sign in with email code</Link>
-              </div>
-              <Link
-                href="/employee-setup"
-                className="block text-xs text-blue-700 mb-4"
-              >
-                First login? Create your employee password
-              </Link>
+              {!owner && (
+                <div className="flex justify-between text-xs text-blue-700 mb-4">
+                  <Link href="/forgot-password">Forgot password?</Link>
+                  <Link href="/otp">Sign in with email code</Link>
+                </div>
+              )}
+              {!owner && (
+                <Link
+                  href="/employee-setup"
+                  className="block text-xs text-blue-700 mb-4"
+                >
+                  First login? Create your employee password
+                </Link>
+              )}
             </>
           )}
           <Button className="w-full mt-3 h-12" disabled={busy || !ready}>
@@ -270,10 +294,20 @@ export function AuthForm({ setup = false }: { setup?: boolean }) {
             <ArrowRight />
           </Button>
           <p className="muted text-xs text-center mt-6">
-            {setup
-              ? "Next: configure your company, invite users, and add employees."
-              : "Need access? Contact your company administrator."}
+            {owner
+              ? "Owner access is separate from your clients’ company accounts."
+              : setup
+                ? "Next: configure your company, invite users, and add employees."
+                : "Need access? Contact your company administrator."}
           </p>
+          {!setup && (
+            <Link
+              href={owner ? "/login" : "/owner/login"}
+              className="block text-center text-sm text-blue-700 mt-4"
+            >
+              {owner ? "Client sign in" : "Software owner sign in"}
+            </Link>
+          )}
         </form>
       </main>
     </div>

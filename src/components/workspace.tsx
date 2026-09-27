@@ -275,7 +275,9 @@ export function Workspace({ module }: { module: string }) {
           await api("auth/refresh", { method: "POST" }, false);
           return await api<Me>("auth/me", {}, false);
         } catch {
-          window.location.href = "/login";
+          window.location.href = ["admin", "platform"].includes(module)
+            ? "/owner/login"
+            : "/login";
           throw new Error("Opening sign in…");
         }
       }
@@ -319,6 +321,31 @@ export function Workspace({ module }: { module: string }) {
           </p>
         </div>
       </div>
+    );
+  if (me.passwordChangeRequired || me.mfaSetupRequired)
+    return (
+      <main className="min-h-screen bg-[var(--background)] p-6">
+        <div className="max-w-2xl mx-auto py-10">
+          <div className="flex items-center justify-between gap-4 mb-8">
+            <CompanyLogo />
+            <Button
+              variant="outline"
+              onClick={async () => {
+                await api("auth/logout", { method: "POST" });
+                window.location.href = me.isSuperAdmin
+                  ? "/owner/login"
+                  : "/login";
+              }}
+            >
+              Sign out
+            </Button>
+          </div>
+          <p className="muted text-sm mb-4">
+            {me.name} · {me.isSuperAdmin ? "Software owner" : me.roleName}
+          </p>
+          <SecuritySetupRequired me={me} />
+        </div>
+      </main>
     );
   const inPlan = (key: string) =>
     !navFeature[key] ||
@@ -393,7 +420,7 @@ export function Workspace({ module }: { module: string }) {
               className={`nav-link ${["platform", "admin"].includes(module) ? "active" : ""}`}
             >
               <Globe size={17} />
-              Platform
+              {me.isSuperAdmin ? "Owner dashboard" : "Platform"}
             </Link>
           )}
         </nav>
@@ -411,7 +438,9 @@ export function Workspace({ module }: { module: string }) {
           onClick={async () => {
             try {
               await api("auth/logout", { method: "POST" });
-              window.location.href = "/login";
+              window.location.href = me.isSuperAdmin
+                ? "/owner/login"
+                : "/login";
             } catch (e) {
               setToast((e as Error).message);
             }

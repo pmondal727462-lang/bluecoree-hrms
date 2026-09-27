@@ -199,15 +199,21 @@ export function SecuritySetupRequired({ me }: { me: Me }) {
       <div className="card p-6 flex gap-4 items-start">
         <ShieldAlert className="text-amber-600 shrink-0" />
         <div>
-          <h1 className="text-lg font-bold">Security step required</h1>
+          <h1 className="text-lg font-bold">
+            {me.temporaryPassword
+              ? "Activate your account"
+              : "Security step required"}
+          </h1>
           <p className="muted mt-2">
             {me.passwordChangeRequired
-              ? "Your password has expired. Change it below, then sign in again."
+              ? me.temporaryPassword
+                ? "Your temporary password worked. Choose a new password to unlock your dashboard and management tools, then sign in again."
+                : "Your password has expired. Change it below, then sign in again."
               : "Your company requires two-factor authentication for your role. Set up an authenticator app below, then refresh the page."}
           </p>
         </div>
       </div>
-      <AccountSecurity />
+      <AccountSecurity changePasswordOnOpen={!!me.passwordChangeRequired} />
     </>
   );
 }

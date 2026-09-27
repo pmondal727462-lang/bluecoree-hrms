@@ -17,4 +17,8 @@ Checked on 27 September 2026 against the [master specification](master-specifica
 - anonymisation of applications (hired candidates kept) and of leavers, the legal hold blocking a run but allowing a preview, and the audit record;
 - the cross-tenant sweep over 10 endpoints.
 
+Passwords created or replaced by an administrator are temporary. Users must choose a different password before accessing protected services; account setup and logout remain available. Changing the password clears the requirement and revokes existing sessions. Password reset and employee password setup also clear the requirement. Existing accounts keep their current behavior unless explicitly marked for a password change. Apply the `20260930160000_must_change_password` migration before deploying this change.
+
+`tests/integration/password-change.test.ts` verifies the temporary-password gate, rejection of the current password, session revocation, and the administrator create/replace flows.
+
 **Not verified here:** an independent penetration test, and a disaster-recovery drill on separate infrastructure.

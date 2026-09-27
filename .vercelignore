@@ -1,0 +1,15 @@
+.git
+.next
+node_modules
+.env
+.env.*
+data
+tmp
+mobile
+*.log
+*.tsbuildinfo
+coverage
+test-results
+playwright-report
+.claude
+.codex

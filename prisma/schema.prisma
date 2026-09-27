@@ -167,6 +167,7 @@ model User {
   failedLoginCount   Int                   @default(0)
   lockedUntil        DateTime?
   passwordChangedAt  DateTime              @default(now())
+  mustChangePassword Boolean               @default(false)
   recoveryCodeHashes String[]              @default([])
   active             Boolean               @default(true)
   isSuperAdmin       Boolean               @default(false)
@@ -1117,6 +1118,8 @@ model Subscription {
   graceDays             Int              @default(7)
   cancelledAt           DateTime?
   notes                 String?
+  enabledFeatures       String[]         @default([])
+  disabledFeatures      String[]         @default([])
   createdAt             DateTime         @default(now())
   updatedAt             DateTime         @updatedAt
   company               Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)

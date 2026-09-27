@@ -5,13 +5,19 @@ import { api } from "@/lib/api-client";
 import { Button } from "./ui/button";
 import { RecordForm } from "./record-form";
 import { Dialog } from "./ui/dialog";
-export function AccountSecurity() {
+export function AccountSecurity({
+  changePasswordOnOpen = false,
+}: {
+  changePasswordOnOpen?: boolean;
+}) {
   const client = useQueryClient();
   const { data, error } = useQuery({
     queryKey: ["2fa"],
     queryFn: () => api<{ enabled: boolean }>("auth/2fa/status"),
   });
-  const [mode, setMode] = useState<"password" | "2fa" | null>(null),
+  const [mode, setMode] = useState<"password" | "2fa" | null>(
+      changePasswordOnOpen ? "password" : null,
+    ),
     [secret, setSecret] = useState(""),
     [password, setPassword] = useState("");
   return (
@@ -93,7 +99,11 @@ export function AccountSecurity() {
                 method: "PUT",
                 body: JSON.stringify(v),
               });
-              window.location.href = "/login";
+              window.location.href = client.getQueryData<{
+                isSuperAdmin: boolean;
+              }>(["me"])?.isSuperAdmin
+                ? "/owner/login"
+                : "/login";
             }}
           />
         ) : secret ? (

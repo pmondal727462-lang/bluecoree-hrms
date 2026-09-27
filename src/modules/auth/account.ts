@@ -30,11 +30,20 @@ export async function passwordChange(req: NextRequest, ctx: Context) {
   const user = await db.user.findUniqueOrThrow({ where: { id: ctx.userId } });
   if (!(await bcrypt.compare(b.currentPassword, user.passwordHash)))
     throw new AppError(403, "Current password is incorrect.");
+  if (await bcrypt.compare(b.newPassword, user.passwordHash))
+    throw new AppError(
+      422,
+      "Choose a password different from the current one.",
+    );
   const hash = await bcrypt.hash(b.newPassword, 12);
   await db.$transaction(async (tx) => {
     await tx.user.update({
       where: { id: ctx.userId },
-      data: { passwordHash: hash, passwordChangedAt: new Date() },
+      data: {
+        passwordHash: hash,
+        passwordChangedAt: new Date(),
+        mustChangePassword: false,
+      },
     });
     await tx.session.deleteMany({ where: { userId: ctx.userId } });
     await securityEvent(tx, {
@@ -274,7 +283,11 @@ export async function redeemChallenge(req: NextRequest, kind: "reset" | "otp") {
     if (hash) {
       await tx.user.update({
         where: { id: user.id },
-        data: { passwordHash: hash, passwordChangedAt: new Date() },
+        data: {
+          passwordHash: hash,
+          passwordChangedAt: new Date(),
+          mustChangePassword: false,
+        },
       });
       await tx.session.deleteMany({ where: { userId: user.id } });
       await tx.authChallenge.updateMany({
@@ -374,6 +387,7 @@ export async function employeePasswordSetup(req: NextRequest) {
         mustSetPassword: false,
         passwordSetAt: new Date(),
         passwordChangedAt: new Date(),
+        mustChangePassword: false,
       },
     });
     if (faceTemplate && user.employee)

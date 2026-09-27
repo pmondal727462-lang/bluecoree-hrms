@@ -148,6 +148,8 @@ async function route(
       });
     if (route === "auth/setup" && method === "POST") return await setup(req);
     if (route === "auth/login" && method === "POST") return await login(req);
+    if (route === "auth/owner-login" && method === "POST")
+      return await login(req, true);
     if (route === "v1/auth/login" && method === "POST")
       return ok(await mobileLogin(req));
     if (route === "v1/auth/refresh" && method === "POST")

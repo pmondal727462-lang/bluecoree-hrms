@@ -40,6 +40,7 @@ export type Context = {
   sessionId: string;
   mfaSetupRequired?: boolean;
   passwordChangeRequired?: boolean;
+  temporaryPassword?: boolean;
 };
 export function ip(req: NextRequest) {
   return process.env.TRUST_PROXY === "true"
@@ -201,7 +202,9 @@ export async function authenticate(req: NextRequest): Promise<Context> {
     if (gate.passwordChangeRequired)
       throw new AppError(
         428,
-        "Your password has expired. Change it to continue.",
+        gate.temporaryPassword
+          ? "Choose your own password to continue."
+          : "Your password has expired. Change it to continue.",
         "PASSWORD_EXPIRED",
       );
     if (gate.mfaSetupRequired)
@@ -516,9 +519,38 @@ async function verifyCredentials(
   await history(true);
   return user;
 }
-export async function login(req: NextRequest) {
+export async function login(req: NextRequest, owner = false) {
   await rateLimit(`login-ip:${ip(req)}`, 100);
-  const b = loginSchema.parse(await json(req));
+  const input = await json(req);
+  let b: z.infer<typeof loginSchema>;
+  if (owner) {
+    const credentials = loginSchema
+      .omit({ companyCode: true })
+      .extend({
+        identifier: z.string().trim().email().toLowerCase(),
+      })
+      .parse(input);
+    await rateLimit(`owner-login:${digest(credentials.identifier)}`, 10);
+    const owners = await db.user.findMany({
+      where: { email: credentials.identifier, isSuperAdmin: true },
+      select: { company: { select: { code: true } } },
+      take: 2,
+    });
+    if (owners.length !== 1) {
+      await bcrypt.compare(
+        credentials.password,
+        "$2b$12$uZ8HYHOQSXdMn46BNPUPXuMIABCRHxFg8eTbsKtLzaOW.6PEgHqfC",
+      );
+      throw new AppError(
+        401,
+        "Invalid owner credentials.",
+        "INVALID_CREDENTIALS",
+      );
+    }
+    b = { ...credentials, companyCode: owners[0].company.code };
+  } else {
+    b = loginSchema.parse(input);
+  }
   // On a company's own domain, only that company's users sign in.
   const { companyForHost } = await import("@/modules/saas/branding");
   const bound = await companyForHost(req.headers.get("host"));
@@ -529,6 +561,12 @@ export async function login(req: NextRequest) {
       "WRONG_COMPANY_DOMAIN",
     );
   const user = await verifyCredentials(req, b, "WEB");
+  if (owner && !user.isSuperAdmin)
+    throw new AppError(
+      401,
+      "Invalid owner credentials.",
+      "INVALID_CREDENTIALS",
+    );
   await audit(
     db,
     { companyId: user.companyId, userId: user.id, name: user.name },

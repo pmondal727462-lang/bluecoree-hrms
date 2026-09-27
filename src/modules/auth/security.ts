@@ -118,7 +118,11 @@ export function roleTier(permissions: string[], isSuperAdmin = false): Tier {
 }
 export function securityGate(
   policy: Awaited<ReturnType<typeof securityPolicy>>,
-  user: { twoFactorEnabled: boolean; passwordChangedAt: Date },
+  user: {
+    twoFactorEnabled: boolean;
+    passwordChangedAt: Date;
+    mustChangePassword?: boolean;
+  },
   tier: Tier,
 ) {
   const required =
@@ -127,10 +131,14 @@ export function securityGate(
     (tier === "employee" && policy.requireForEmployees);
   return {
     mfaSetupRequired: required && !user.twoFactorEnabled,
+    // Set for accounts created with a temporary password.
     passwordChangeRequired:
-      !!policy.passwordExpiryDays &&
-      user.passwordChangedAt.getTime() + policy.passwordExpiryDays * 86400000 <
-        Date.now(),
+      !!user.mustChangePassword ||
+      (!!policy.passwordExpiryDays &&
+        user.passwordChangedAt.getTime() +
+          policy.passwordExpiryDays * 86400000 <
+          Date.now()),
+    temporaryPassword: !!user.mustChangePassword,
   };
 }
 

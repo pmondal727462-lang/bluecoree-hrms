@@ -50,6 +50,8 @@ type CompanyRow = {
   currentPeriodEnd: string | null;
   graceDays: number | null;
   notes: string | null;
+  enabledFeatures: string[];
+  disabledFeatures: string[];
   employees: number;
   users: number;
   activeUsers30d: number;
@@ -73,6 +75,7 @@ type Plan = {
   features: string[];
   trialDays: number | null;
   active: boolean;
+  public: boolean;
   sortOrder: number;
 };
 type Check = {
@@ -115,15 +118,15 @@ export function PlatformPage({ me, notify }: { me: Me; notify: Notify }) {
   return (
     <>
       <Heading
-        eyebrow="Super Admin"
-        title="Platform"
-        text="Tenants, subscriptions, support, system health and backups across the whole service."
+        eyebrow={me.isSuperAdmin ? "Software owner" : "Platform support"}
+        title="Owner dashboard"
+        text="Manage your clients, their subscriptions and access rights, and the prices published on your website."
       />
       <div className="section-tabs">
         {[
           ["overview", "Overview"],
-          ["companies", "Companies"],
-          ["plans", "Plans"],
+          ["companies", "Clients & subscriptions"],
+          ["plans", "Website pricing & plans"],
           ["billing", "Billing"],
           ["support", "Support"],
           ["health", "System health"],
@@ -223,6 +226,7 @@ function Companies({ me, notify }: { me: Me; notify: Notify }) {
   };
   const [edit, setEdit] = useState<CompanyRow | null>(null),
     [creating, setCreating] = useState(false);
+  const [rights, setRights] = useState<CompanyRow | null>(null);
   const list = useQuery({
     queryKey: ["platform", "companies"],
     queryFn: () => api<CompanyRow[]>("platform/companies"),
@@ -234,7 +238,7 @@ function Companies({ me, notify }: { me: Me; notify: Notify }) {
   return (
     <section className="card">
       <div className="card-title flex justify-between items-center">
-        <h2>Companies</h2>
+        <h2>Clients</h2>
         <Button size="sm" onClick={() => setCreating(!creating)}>
           <Plus />
           {creating ? "Hide company creation" : "Create company"}
@@ -295,6 +299,13 @@ function Companies({ me, notify }: { me: Me; notify: Notify }) {
                 <Button
                   size="sm"
                   variant="outline"
+                  onClick={() => setRights(c)}
+                >
+                  Access rights
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
                   onClick={() =>
                     act(c, "status", {
                       status:
@@ -343,6 +354,54 @@ function Companies({ me, notify }: { me: Me; notify: Notify }) {
           </div>,
         ])}
       />
+      <Dialog
+        open={!!rights}
+        onOpenChange={(v) => !v && setRights(null)}
+        title={`Access rights · ${rights?.name ?? ""}`}
+        description="Use the plan and add-ons by default, allow an extra module, or block it for this client. Subscription expiry still applies. Employee roles remain managed within the client’s workspace."
+      >
+        {rights && (
+          <RecordForm
+            initial={Object.fromEntries(
+              Object.keys(featureLabels).map((key) => [
+                key,
+                rights.disabledFeatures.includes(key)
+                  ? "block"
+                  : rights.enabledFeatures.includes(key)
+                    ? "allow"
+                    : "plan",
+              ]),
+            )}
+            fields={Object.entries(featureLabels).map(([key, label]) => ({
+              key,
+              label,
+              type: "select" as const,
+              options: [
+                { value: "plan", label: "Follow plan and add-ons" },
+                { value: "allow", label: "Allow" },
+                { value: "block", label: "Block" },
+              ],
+            }))}
+            onCancel={() => setRights(null)}
+            onSave={async (v) => {
+              await api(`platform/companies/${rights.id}/rights`, {
+                method: "PUT",
+                body: JSON.stringify({
+                  enabledFeatures: Object.keys(featureLabels).filter(
+                    (key) => v[key] === "allow",
+                  ),
+                  disabledFeatures: Object.keys(featureLabels).filter(
+                    (key) => v[key] === "block",
+                  ),
+                }),
+              });
+              setRights(null);
+              notify("Client access rights updated.");
+              await client.invalidateQueries({ queryKey: ["platform"] });
+            }}
+          />
+        )}
+      </Dialog>
       <Dialog
         open={!!reset}
         onOpenChange={(v) => !v && setReset(null)}
@@ -449,7 +508,7 @@ function Plans({ notify }: { notify: Notify }) {
   return (
     <section className="card">
       <div className="card-title flex justify-between items-center">
-        <h2>Plans</h2>
+        <h2>Website pricing & plans</h2>
         <Button
           size="sm"
           onClick={() => {
@@ -519,8 +578,17 @@ function Plans({ notify }: { notify: Notify }) {
           <RecordForm
             initial={
               edit === "new"
-                ? { active: "true", currency: "INR", sortOrder: 10 }
-                : { ...edit, active: String(edit.active) }
+                ? {
+                    active: "true",
+                    public: "true",
+                    currency: "INR",
+                    sortOrder: 10,
+                  }
+                : {
+                    ...edit,
+                    active: String(edit.active),
+                    public: String(edit.public),
+                  }
             }
             fields={[
               { key: "code", label: "Code (A-Z, 0-9, _)", required: true },
@@ -596,6 +664,16 @@ function Plans({ notify }: { notify: Notify }) {
                   { value: "false", label: "No" },
                 ],
               },
+              {
+                key: "public",
+                label: "Show on website pricing page",
+                type: "select",
+                required: true,
+                options: [
+                  { value: "true", label: "Yes" },
+                  { value: "false", label: "No — private client plan" },
+                ],
+              },
               { key: "description", label: "Description", type: "textarea" },
             ]}
             onCancel={() => setEdit(null)}
@@ -625,6 +703,7 @@ function Plans({ notify }: { notify: Notify }) {
                     trialDays: num(v.trialDays),
                     sortOrder: Number(v.sortOrder),
                     active: v.active === "true",
+                    public: v.public === "true",
                     features,
                   }),
                 },

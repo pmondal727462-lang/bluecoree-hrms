@@ -106,10 +106,13 @@ export async function entitlements(companyId: string, client: Client = db) {
   ) => (base === null ? null : base + extra(k));
   return {
     sub,
-    features: new Set<string>([
-      ...sub.plan.features,
-      ...addOns.flatMap((a) => (a.addOn.feature ? [a.addOn.feature] : [])),
-    ]),
+    features: new Set<string>(
+      [
+        ...sub.plan.features,
+        ...addOns.flatMap((a) => (a.addOn.feature ? [a.addOn.feature] : [])),
+        ...sub.enabledFeatures,
+      ].filter((feature) => !sub.disabledFeatures.includes(feature)),
+    ),
     addOns: addOns.map((a) => ({
       code: a.addOn.code,
       name: a.addOn.name,
@@ -517,6 +520,8 @@ export async function platformSaas(
         currentPeriodEnd: sub?.currentPeriodEnd ?? null,
         graceDays: sub?.graceDays ?? null,
         notes: sub?.notes ?? null,
+        enabledFeatures: sub?.enabledFeatures ?? [],
+        disabledFeatures: sub?.disabledFeatures ?? [],
         employees: c._count.employees,
         users: c._count.users,
         companyStatus: c.status,

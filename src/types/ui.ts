@@ -21,6 +21,7 @@ export type Me = {
   sessionId: string;
   mfaSetupRequired?: boolean;
   passwordChangeRequired?: boolean;
+  temporaryPassword?: boolean;
   subscription?: {
     status: "TRIAL" | "ACTIVE" | "GRACE" | "EXPIRED";
     plan: { code: string; name: string; features: string[] };

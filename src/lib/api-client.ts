@@ -15,7 +15,11 @@ export async function api<T>(
         refreshing = null;
       });
     if (await refreshing) return api<T>(path, options, false);
-    window.location.href = "/login";
+    window.location.href = ["/admin", "/platform"].includes(
+      window.location.pathname,
+    )
+      ? "/owner/login"
+      : "/login";
   }
   const result = await response.json();
   if (!response.ok) throw new Error(result.message || "Request failed.");

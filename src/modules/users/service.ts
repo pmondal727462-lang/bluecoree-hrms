@@ -115,6 +115,7 @@ export async function users(req: NextRequest, ctx: Context, id?: string) {
               ...(passwordHash
                 ? {
                     passwordHash,
+                    mustChangePassword: true,
                     mustSetPassword: false,
                     passwordSetAt: new Date(),
                     passwordChangedAt: new Date(),
@@ -131,6 +132,7 @@ export async function users(req: NextRequest, ctx: Context, id?: string) {
               email: rest.email!,
               mobile: rest.mobile,
               passwordHash: passwordHash!,
+              mustChangePassword: true,
               active: rest.active,
             },
             select,

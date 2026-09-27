@@ -8,7 +8,11 @@ import { randomBytes } from "node:crypto";
 import { digest } from "@/lib/crypto";
 import { audit, ip, json, type Context } from "@/modules/auth/service";
 import { securityEvent } from "@/modules/auth/security";
-import { effectiveStatus, platformSaas } from "@/modules/saas/service";
+import {
+  effectiveStatus,
+  platformSaas,
+  planFeatures,
+} from "@/modules/saas/service";
 import { supportDesk } from "@/modules/support/service";
 import { backupConfig, nextBackups } from "./backup";
 import { healthHistory, runHealthChecks } from "./health";
@@ -180,6 +184,52 @@ async function companyAction(
 ) {
   const company = await db.company.findUnique({ where: { id } });
   if (!company) throw new AppError(404, "Company not found.");
+  if (action === "rights" && req.method === "PUT") {
+    const b = z
+      .object({
+        enabledFeatures: z.array(z.enum(planFeatures)).max(planFeatures.length),
+        disabledFeatures: z
+          .array(z.enum(planFeatures))
+          .max(planFeatures.length),
+      })
+      .strict()
+      .refine(
+        (v) => !v.enabledFeatures.some((f) => v.disabledFeatures.includes(f)),
+        "A module cannot be both allowed and blocked.",
+      )
+      .parse(await json(req));
+    return db.$transaction(async (tx) => {
+      const old = await tx.subscription.findUnique({
+        where: { companyId: id },
+      });
+      if (!old)
+        throw new AppError(
+          409,
+          "Assign a subscription before changing client rights.",
+        );
+      const saved = await tx.subscription.update({
+        where: { companyId: id },
+        data: b,
+      });
+      await audit(
+        tx,
+        ctx,
+        "UPDATE",
+        "client_rights",
+        id,
+        {
+          enabledFeatures: old.enabledFeatures,
+          disabledFeatures: old.disabledFeatures,
+        },
+        b,
+        ip(req),
+      );
+      return {
+        enabledFeatures: saved.enabledFeatures,
+        disabledFeatures: saved.disabledFeatures,
+      };
+    });
+  }
   if (action === "status") {
     const b = z
       .object({
