@@ -2,6 +2,8 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { product } from "@/config/product";
 import { CompanyLogo } from "./company-logo";
+import { ArrowUpRight } from "lucide-react";
+import "./marketing.css";
 
 const nav = [
   ["/features", "Features"],
@@ -13,42 +15,78 @@ const nav = [
 // Layout for the public marketing pages (spec §75).
 export function MarketingShell({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen flex flex-col">
-      <header className="border-b border-[var(--border)]">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex flex-wrap items-center gap-4 justify-between">
-          <Link href="/" className="font-bold text-lg">
-            <CompanyLogo width={160} />
+    <div className="marketing-site min-h-screen flex flex-col">
+      <a className="marketing-skip" href="#public-content">
+        Skip to content
+      </a>
+      <div className="marketing-announcement">
+        One connected workspace for your people.{" "}
+        <Link href="/features">
+          Explore BlueCoreeHR <ArrowUpRight size={13} />
+        </Link>
+      </div>
+      <header className="marketing-header">
+        <div className="marketing-nav">
+          <Link
+            href="/"
+            className="marketing-brand"
+            aria-label="BlueCoreeHR home"
+          >
+            <CompanyLogo width={110} />
+            <span>
+              BlueCoree<span>HR</span>
+            </span>
           </Link>
-          <nav className="flex flex-wrap gap-4 text-sm">
+          <nav aria-label="Main navigation" className="marketing-links">
             {nav.map(([href, label]) => (
               <Link key={href} href={href}>
                 {label}
               </Link>
             ))}
-            <Link href="/login">Sign in</Link>
-            <Link href="/owner/login">Management Login</Link>
-            <Link
-              href="/start-trial"
-              className="px-3 py-1 rounded-lg bg-[var(--primary,#1f4e99)] text-white font-semibold"
-            >
-              Start free trial
-            </Link>
           </nav>
+          <div className="marketing-actions">
+            <Link href="/login">Log in</Link>
+            <Link href="/contact" className="marketing-button">
+              Request a demo <ArrowUpRight size={16} />
+            </Link>
+          </div>
         </div>
       </header>
-      <main className="flex-1">{children}</main>
-      <footer className="border-t border-[var(--border)] mt-16">
-        <div className="max-w-6xl mx-auto px-4 py-8 text-sm muted flex flex-wrap gap-6 justify-between">
-          <span>
-            © {new Date().getFullYear()} {product.name}
-          </span>
-          <span className="flex gap-4">
-            <Link href="/features">Features</Link>
-            <Link href="/pricing">Pricing</Link>
+      <main id="public-content" className="flex-1">
+        {children}
+      </main>
+      <footer className="marketing-footer">
+        <div className="marketing-container marketing-footer-grid">
+          <div>
+            <h3>{product.name}</h3>
+            <p>
+              People, time and payroll.
+              <br />
+              Better together.
+            </p>
+          </div>
+          <div>
+            <h4>Explore</h4>
+            <Link href="/features">Our features</Link>
+            <Link href="/pricing">Plans & pricing</Link>
             <Link href="/resources">Resources</Link>
-            <Link href="/contact">Contact</Link>
-            <Link href="/api-docs">API</Link>
-          </span>
+          </div>
+          <div>
+            <h4>Get started</h4>
+            <Link href="/start-trial">Start free trial</Link>
+            <Link href="/contact">Request a demo</Link>
+            <Link href="/api-docs">API documentation</Link>
+          </div>
+          <div>
+            <h4>Your workspace</h4>
+            <Link href="/login">Employee & company login</Link>
+            <Link href="/owner/login">Management Login</Link>
+            <Link href="/forgot-password">Reset password</Link>
+          </div>
+        </div>
+        <div className="marketing-container marketing-copyright">
+          © {new Date().getFullYear()} {product.name}
+          <span>Built for the way your people work.</span>
         </div>
       </footer>
     </div>
@@ -118,7 +156,7 @@ export const modules: {
   },
   {
     key: "ai",
-    title: "AI HR Copilot",
+    title: "Ask Me assistant",
     text: "Answers and drafts, always within each person's access.",
     points: [
       "Ask about leave, attendance, approvals and reports",

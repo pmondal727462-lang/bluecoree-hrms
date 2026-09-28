@@ -1,17 +1,24 @@
 import { MarketingShell } from "@/components/marketing";
-import { Pricing } from "@/components/marketing-forms";
+import { Pricing } from "@/components/public-pricing";
 
 export const metadata = { title: "Pricing" };
 
 export default function PricingPage() {
   return (
     <MarketingShell>
-      <section className="max-w-6xl mx-auto px-4 py-12 space-y-6">
-        <h1 className="text-3xl font-bold">Simple, per-employee pricing</h1>
-        <p className="muted">
-          Pay monthly or annually. Add only the modules you need. Prices exclude
-          GST.
-        </p>
+      <section className="marketing-container marketing-pricing-page">
+        <div className="marketing-section-heading">
+          <p className="marketing-eyebrow">YOUR TEAM. THE RIGHT PLAN.</p>
+          <h1>
+            Clear plans.
+            <br />
+            <em>Room to grow.</em>
+          </h1>
+          <p>
+            Choose the tools your people need, from everyday attendance to
+            connected HR and payroll.
+          </p>
+        </div>
         <Pricing />
       </section>
     </MarketingShell>
