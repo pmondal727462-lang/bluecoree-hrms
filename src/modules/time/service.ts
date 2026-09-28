@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { effectiveAttendanceStatus } from "./single-punch";
+import { issueOfflinePermit, verifyOfflinePermit } from "./offline";
 import {
   assertPayrollOpen,
   assertPayrollOpenRange,
@@ -495,6 +496,43 @@ async function punch(req: NextRequest, ctx: Context, action: string) {
     await rateLimit(`face-punch:${ctx.userId}`, 20);
   return mutate(ctx, async (tx) => {
     const e = await own(ctx, tx);
+    const payloadHash = b.offline
+      ? createHash("sha256")
+          .update(JSON.stringify({ ...b, action }))
+          .digest("hex")
+      : null;
+    if (b.offline) {
+      const previous = await tx.attendancePunch.findFirst({
+        where: {
+          companyId: ctx.companyId,
+          employeeId: e.id,
+          clientEventId: b.offline.eventId,
+        },
+        include: { attendance: true },
+      });
+      if (previous) {
+        if (previous.clientPayloadHash !== payloadHash)
+          throw new AppError(
+            409,
+            "This offline event ID was already used for a different punch.",
+          );
+        if (!previous.attendance)
+          throw new AppError(
+            409,
+            "The synced attendance record has been removed. Contact HR.",
+          );
+        return previous.attendance;
+      }
+    }
+    const capturedAt = b.offline
+      ? verifyOfflinePermit(
+          b.offline.permit,
+          ctx,
+          e.id,
+          b.deviceId,
+          b.offline.capturedAt,
+        )
+      : null;
     const p = await policy(tx, ctx.companyId, e.branchId);
     let faceResult: { confidence: number; livenessPassed: boolean } | null =
       null;
@@ -605,9 +643,32 @@ async function punch(req: NextRequest, ctx: Context, action: string) {
         ip: ip(req),
       },
     );
-    const recordedLocation = located?.recorded;
-    const now = new Date();
+    const recordedLocation = located
+      ? {
+          ...located.recorded,
+          ...(capturedAt
+            ? {
+                recordedAt: capturedAt.toISOString(),
+                syncedAt: new Date().toISOString(),
+              }
+            : {}),
+        }
+      : undefined;
+    const now = capturedAt ?? new Date();
     const plan = await dayPlan(tx, ctx.companyId, e, now);
+    await assertPayrollOpen(tx, ctx.companyId, dayDate(plan.day));
+    if (capturedAt) {
+      const latest = await tx.attendancePunch.findFirst({
+        where: { companyId: ctx.companyId, employeeId: e.id },
+        orderBy: { punchedAt: "desc" },
+      });
+      if (latest && latest.punchedAt > capturedAt)
+        throw new AppError(
+          409,
+          "Newer attendance already exists. Ask HR to reconcile this offline punch.",
+          "OFFLINE_OUT_OF_ORDER",
+        );
+    }
     let viaFace = false;
     let open = await tx.attendance.findFirst({
       where: { companyId: ctx.companyId, employeeId: e.id, checkOut: null },
@@ -657,13 +718,23 @@ async function punch(req: NextRequest, ctx: Context, action: string) {
       viaFace = true;
     }
     let saved;
-    const source = viaFace
-      ? "Face"
-      : fallback
-        ? "Face fallback"
-        : req.nextUrl.pathname.startsWith("/api/v1/")
-          ? "Mobile"
-          : "Web";
+    if (
+      b.offline &&
+      b.offline.direction !== (action === "check-in" ? "IN" : "OUT")
+    )
+      throw new AppError(
+        409,
+        "The offline punch does not match the recorded check-in state. Ask HR to reconcile it.",
+      );
+    const source =
+      (b.offline ? "Offline " : "") +
+      (viaFace
+        ? "Face"
+        : fallback
+          ? "Face fallback"
+          : req.nextUrl.pathname.startsWith("/api/v1/")
+            ? "Mobile"
+            : "Web");
     if (action === "check-in") {
       if (open) fail("You are already checked in. Check out first.");
       const snapshot = {
@@ -703,6 +774,9 @@ async function punch(req: NextRequest, ctx: Context, action: string) {
       });
     } else {
       if (!open) return fail("You are not checked in.");
+      await assertPayrollOpen(tx, ctx.companyId, open.workDate);
+      if (now <= (open.checkOut ?? open.checkIn))
+        fail("Check-out must be later than the last punch.");
       if (now.getTime() - open.checkIn.getTime() > 36 * 3600000)
         fail(
           "This check-in is over 36 hours old. Submit a missed punch request or ask HR to correct it.",
@@ -744,6 +818,8 @@ async function punch(req: NextRequest, ctx: Context, action: string) {
         employeeId: e.id,
         attendanceId: saved.id,
         punchedAt: now,
+        clientEventId: b.offline?.eventId ?? null,
+        clientPayloadHash: payloadHash,
         direction: action === "check-in" ? "IN" : "OUT",
         source,
         deviceId: b.deviceId ?? null,
@@ -760,7 +836,18 @@ async function punch(req: NextRequest, ctx: Context, action: string) {
       "attendance",
       saved.id,
       undefined,
-      { employeeId: e.id, workDate: saved.workDate.toISOString() },
+      {
+        employeeId: e.id,
+        workDate: saved.workDate.toISOString(),
+        ...(b.offline
+          ? {
+              offlineEventId: b.offline.eventId,
+              capturedAt: now.toISOString(),
+              receivedAt: new Date().toISOString(),
+              deviceId: b.deviceId,
+            }
+          : {}),
+      },
       ip(req),
     );
     if (located)
@@ -831,6 +918,7 @@ async function fieldTracking(
   action: "list" | "start" | "point" | "stop",
   id?: string,
 ) {
+  if (action !== "stop") await requireFeature(ctx.companyId, "livetracking");
   await expireFieldSessions(ctx.companyId);
   if (action === "list") {
     const q = z
@@ -2444,6 +2532,34 @@ export async function timeRoute(
   const leaveAdmin = await leaveAdminRoute(req, ctx, resource, id);
   if (leaveAdmin !== null) return leaveAdmin;
   if (!id && resource === "summary" && method === "GET") return summary(ctx);
+  if (!id && resource === "offline-permit" && method === "GET") {
+    requirePermission(ctx, "attendance.self");
+    const deviceId = z.uuid().parse(req.nextUrl.searchParams.get("deviceId"));
+    const e = await own(ctx);
+    const s = await summary(ctx);
+    return {
+      ...issueOfflinePermit(ctx, e.id, deviceId),
+      deviceId,
+      userId: ctx.userId,
+      companyId: ctx.companyId,
+      employeeId: e.id,
+      name: `${e.firstName} ${e.lastName}`,
+      employeeCode: e.employeeCode,
+      timezone: s.timezone,
+      faceRequired: !!(s.policy.faceAttendanceEnabled || e.faceRequired),
+      gpsRequired: !!(
+        s.employeePolicy.geofenceEnabled || s.employeePolicy.gpsTrackingEnabled
+      ),
+      fallback: s.faceRules.fallback,
+      checkedIn: !!s.open,
+      lastPunch:
+        (
+          s.current?.checkOut ??
+          s.open?.checkIn ??
+          s.current?.checkIn
+        )?.toISOString() ?? null,
+    };
+  }
   if (resource === "field-tracking" && !id && method === "GET")
     return fieldTracking(req, ctx, "list");
   if (resource === "field-tracking" && !id && method === "POST")

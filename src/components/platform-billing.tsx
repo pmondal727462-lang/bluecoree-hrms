@@ -15,11 +15,12 @@ type AddOn = {
   name: string;
   description: string | null;
   feature: string | null;
-  priceMonthly: number;
+  priceMonthly: number | null;
   priceAnnual: number;
   perEmployee: boolean;
   extraStorageMb: number | null;
   active: boolean;
+  public: boolean;
 };
 type Coupon = {
   id: string;
@@ -54,7 +55,15 @@ const bool = [
 ];
 
 // Super Admin: add-ons, coupons, invoices, offline payments and refunds.
-export function PlatformBilling({ me, notify }: { me: Me; notify: Notify }) {
+export function PlatformBilling({
+  me,
+  notify,
+  pricingOnly = false,
+}: {
+  me: Me;
+  notify: Notify;
+  pricingOnly?: boolean;
+}) {
   const client = useQueryClient();
   const superAdmin = me.isSuperAdmin;
   const addOns = useQuery({
@@ -64,10 +73,12 @@ export function PlatformBilling({ me, notify }: { me: Me; notify: Notify }) {
   const coupons = useQuery({
     queryKey: ["platform", "coupons"],
     queryFn: () => api<Coupon[]>("platform/coupons"),
+    enabled: !pricingOnly,
   });
   const invoices = useQuery({
     queryKey: ["platform", "invoices"],
     queryFn: () => api<Invoice[]>("platform/invoices"),
+    enabled: !pricingOnly,
   });
   const [addOn, setAddOn] = useState<AddOn | "new" | null>(null);
   const [coupon, setCoupon] = useState<Coupon | "new" | null>(null);
@@ -78,77 +89,79 @@ export function PlatformBilling({ me, notify }: { me: Me; notify: Notify }) {
   const refresh = () => client.invalidateQueries({ queryKey: ["platform"] });
   return (
     <div className="space-y-6">
-      <section className="card">
-        <div className="card-title flex justify-between items-center">
-          <h2>Invoices</h2>
-          {superAdmin && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={async () => {
-                const r = await api<{
-                  trialReminders: number;
-                  renewalReminders: number;
-                }>("platform/jobs/billing-reminders", { method: "POST" });
-                notify(
-                  `${r.trialReminders} trial and ${r.renewalReminders} renewal reminders sent.`,
-                );
-              }}
-            >
-              Send reminders
-            </Button>
-          )}
-        </div>
-        <Table
-          headers={[
-            "Invoice",
-            "Company",
-            "Date",
-            "Plan",
-            "Total",
-            "Status",
-            "",
-          ]}
-          loading={invoices.isLoading}
-          error={invoices.error}
-          empty="No invoices yet."
-          rows={(invoices.data ?? []).map((i) => [
-            i.number,
-            `${i.company.name} (${i.company.code})`,
-            when(i.issuedAt),
-            i.planCode,
-            inr(i.total),
-            `${i.status.toLowerCase().replace("_", " ")}${i.refundedAmount ? ` · ${inr(i.refundedAmount)} refunded` : ""}`,
-            <div key="a" className="flex gap-2">
-              <a
-                className="inline-flex items-center gap-1 text-xs font-semibold"
-                href={`/api/platform/invoices/${i.id}/pdf`}
+      {!pricingOnly && (
+        <section className="card">
+          <div className="card-title flex justify-between items-center">
+            <h2>Invoices</h2>
+            {superAdmin && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={async () => {
+                  const r = await api<{
+                    trialReminders: number;
+                    renewalReminders: number;
+                  }>("platform/jobs/billing-reminders", { method: "POST" });
+                  notify(
+                    `${r.trialReminders} trial and ${r.renewalReminders} renewal reminders sent.`,
+                  );
+                }}
               >
-                <Download size={14} /> PDF
-              </a>
-              {superAdmin && i.status === "ISSUED" && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setAction({ invoice: i, kind: "mark-paid" })}
+                Send reminders
+              </Button>
+            )}
+          </div>
+          <Table
+            headers={[
+              "Invoice",
+              "Company",
+              "Date",
+              "Plan",
+              "Total",
+              "Status",
+              "",
+            ]}
+            loading={invoices.isLoading}
+            error={invoices.error}
+            empty="No invoices yet."
+            rows={(invoices.data ?? []).map((i) => [
+              i.number,
+              `${i.company.name} (${i.company.code})`,
+              when(i.issuedAt),
+              i.planCode,
+              inr(i.total),
+              `${i.status.toLowerCase().replace("_", " ")}${i.refundedAmount ? ` · ${inr(i.refundedAmount)} refunded` : ""}`,
+              <div key="a" className="flex gap-2">
+                <a
+                  className="inline-flex items-center gap-1 text-xs font-semibold"
+                  href={`/api/platform/invoices/${i.id}/pdf`}
                 >
-                  Mark paid
-                </Button>
-              )}
-              {superAdmin &&
-                ["PAID", "PARTIALLY_REFUNDED"].includes(i.status) && (
+                  <Download size={14} /> PDF
+                </a>
+                {superAdmin && i.status === "ISSUED" && (
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => setAction({ invoice: i, kind: "refund" })}
+                    onClick={() => setAction({ invoice: i, kind: "mark-paid" })}
                   >
-                    Refund
+                    Mark paid
                   </Button>
                 )}
-            </div>,
-          ])}
-        />
-      </section>
+                {superAdmin &&
+                  ["PAID", "PARTIALLY_REFUNDED"].includes(i.status) && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setAction({ invoice: i, kind: "refund" })}
+                    >
+                      Refund
+                    </Button>
+                  )}
+              </div>,
+            ])}
+          />
+        </section>
+      )}
       <section className="card">
         <div className="card-title flex justify-between items-center">
           <h2>Add-ons</h2>
@@ -171,69 +184,75 @@ export function PlatformBilling({ me, notify }: { me: Me; notify: Notify }) {
           ]}
           loading={addOns.isLoading}
           empty="No add-ons."
-          rows={(addOns.data ?? []).map((a) => [
-            a.code,
-            a.name,
-            a.feature ??
-              (a.extraStorageMb ? `${a.extraStorageMb} MB storage` : "—"),
-            inr(a.priceMonthly),
-            inr(a.priceAnnual),
-            a.perEmployee ? "Yes" : "No",
-            a.active ? "Yes" : "No",
-            superAdmin ? (
-              <Button
-                key="e"
-                size="sm"
-                variant="outline"
-                onClick={() => setAddOn(a)}
-              >
-                Edit
-              </Button>
-            ) : null,
-          ])}
+          rows={(addOns.data ?? [])
+            .filter((a) => !pricingOnly || a.public)
+            .map((a) => [
+              a.code,
+              a.name,
+              a.feature ??
+                (a.extraStorageMb ? `${a.extraStorageMb} MB storage` : "—"),
+              a.priceMonthly === null ? "Annual only" : inr(a.priceMonthly),
+              inr(a.priceAnnual),
+              a.perEmployee ? "Yes" : "No",
+              a.active ? "Yes" : "No",
+              superAdmin ? (
+                <Button
+                  key="e"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setAddOn(a)}
+                >
+                  Edit
+                </Button>
+              ) : null,
+            ])}
         />
       </section>
-      <section className="card">
-        <div className="card-title flex justify-between items-center">
-          <h2>Coupons</h2>
-          {superAdmin && (
-            <Button size="sm" onClick={() => setCoupon("new")}>
-              <Plus /> Add
-            </Button>
-          )}
-        </div>
-        <Table
-          headers={[
-            "Code",
-            "Discount",
-            "Plans",
-            "Valid until",
-            "Used",
-            "Active",
-            "",
-          ]}
-          loading={coupons.isLoading}
-          empty="No coupons."
-          rows={(coupons.data ?? []).map((c) => [
-            c.code,
-            c.percentOff !== null ? `${c.percentOff}%` : inr(c.amountOff ?? 0),
-            c.planCodes.join(", ") || "All",
-            c.validUntil ? when(c.validUntil) : "—",
-            `${c.redemptions}${c.maxRedemptions ? ` / ${c.maxRedemptions}` : ""}`,
-            c.active ? "Yes" : "No",
-            superAdmin ? (
-              <Button
-                key="e"
-                size="sm"
-                variant="outline"
-                onClick={() => setCoupon(c)}
-              >
-                Edit
+      {!pricingOnly && (
+        <section className="card">
+          <div className="card-title flex justify-between items-center">
+            <h2>Coupons</h2>
+            {superAdmin && (
+              <Button size="sm" onClick={() => setCoupon("new")}>
+                <Plus /> Add
               </Button>
-            ) : null,
-          ])}
-        />
-      </section>
+            )}
+          </div>
+          <Table
+            headers={[
+              "Code",
+              "Discount",
+              "Plans",
+              "Valid until",
+              "Used",
+              "Active",
+              "",
+            ]}
+            loading={coupons.isLoading}
+            empty="No coupons."
+            rows={(coupons.data ?? []).map((c) => [
+              c.code,
+              c.percentOff !== null
+                ? `${c.percentOff}%`
+                : inr(c.amountOff ?? 0),
+              c.planCodes.join(", ") || "All",
+              c.validUntil ? when(c.validUntil) : "—",
+              `${c.redemptions}${c.maxRedemptions ? ` / ${c.maxRedemptions}` : ""}`,
+              c.active ? "Yes" : "No",
+              superAdmin ? (
+                <Button
+                  key="e"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setCoupon(c)}
+                >
+                  Edit
+                </Button>
+              ) : null,
+            ])}
+          />
+        </section>
+      )}
       <Dialog
         open={!!addOn}
         onOpenChange={(v) => !v && setAddOn(null)}
@@ -243,10 +262,11 @@ export function PlatformBilling({ me, notify }: { me: Me; notify: Notify }) {
           <RecordForm
             initial={
               addOn === "new"
-                ? { active: "true", perEmployee: "false" }
+                ? { active: "true", public: "true", perEmployee: "false" }
                 : {
                     ...addOn,
                     active: String(addOn.active),
+                    public: String(addOn.public),
                     perEmployee: String(addOn.perEmployee),
                   }
             }
@@ -259,9 +279,8 @@ export function PlatformBilling({ me, notify }: { me: Me; notify: Notify }) {
               },
               {
                 key: "priceMonthly",
-                label: "Monthly price",
+                label: "Monthly price (blank for annual-only)",
                 type: "number",
-                required: true,
               },
               {
                 key: "priceAnnual",
@@ -289,6 +308,13 @@ export function PlatformBilling({ me, notify }: { me: Me; notify: Notify }) {
                 options: bool,
               },
               { key: "description", label: "Description", type: "textarea" },
+              {
+                key: "public",
+                label: "Show in public pricing",
+                type: "select",
+                options: bool,
+                required: true,
+              },
             ]}
             onCancel={() => setAddOn(null)}
             onSave={async (v) => {
@@ -301,11 +327,12 @@ export function PlatformBilling({ me, notify }: { me: Me; notify: Notify }) {
                     name: v.name,
                     description: v.description || null,
                     feature: v.feature || null,
-                    priceMonthly: Number(v.priceMonthly),
+                    priceMonthly: n(v.priceMonthly),
                     priceAnnual: Number(v.priceAnnual),
                     perEmployee: v.perEmployee === "true",
                     extraStorageMb: n(v.extraStorageMb),
                     active: v.active === "true",
+                    public: v.public === "true",
                   }),
                 },
               );

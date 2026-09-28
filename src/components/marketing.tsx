@@ -118,6 +118,7 @@ export const modules: {
       "Web, mobile, GPS and geofenced check-in",
       "AI face attendance with liveness and replay checks",
       "Biometric devices (ZKTeco/eSSL, Hikvision, Suprema)",
+      "Offline employee portal clock-ins, with automatic sync while open and connected",
       "Shifts, rosters, overtime approval, leave accrual and comp-off",
     ],
   },

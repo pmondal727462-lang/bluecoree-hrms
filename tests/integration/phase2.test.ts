@@ -532,7 +532,7 @@ describe("Phase 2 attendance and leave", () => {
     expect(
       roster.body.data.items.find((e: { id: string }) => e.id === employeeId)
         .status,
-    ).toBe("Present");
+    ).toBe("Short"); // This test checks out immediately, below a full shift.
   });
   it("corrects hours with a required audit reason and rejects tenant injection", async () => {
     const today = localDay(new Date(), "UTC");
@@ -572,7 +572,9 @@ describe("Phase 2 attendance and leave", () => {
     ).toBe(1);
   });
   it("imports device CSV atomically and rejects duplicates", async () => {
-    const day = addDays(localDay(new Date(), "UTC"), -3);
+    // Keep this separate from the previous test's latest weekday correction,
+    // which is also three days ago when the suite runs on a Monday.
+    const day = addDays(localDay(new Date(), "UTC"), -10);
     const row = `STAFF,${day}T09:00:00Z,${day}T18:00:00Z`;
     const bad = await call("time/import", "POST", admin, {
       csv: `employeeCode,checkIn,checkOut\n${row}\nUNKNOWN,${day}T09:00:00Z,${day}T18:00:00Z`,

@@ -1929,6 +1929,8 @@ model AttendancePunch {
   deviceId     String?
   location     Json?
   ip           String?
+  clientEventId String?
+  clientPayloadHash String?
   createdAt    DateTime    @default(now())
   company      Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
   employee     Employee    @relation(fields: [employeeId, companyId], references: [id, companyId], onDelete: Cascade)
@@ -1936,6 +1938,7 @@ model AttendancePunch {
 
   @@index([companyId, employeeId, punchedAt])
   @@index([attendanceId])
+  @@unique([companyId, employeeId, clientEventId])
   @@map("attendance_punches")
 }
 
@@ -2496,13 +2499,14 @@ model AddOn {
   name            String
   description     String?
   feature         String?
-  priceMonthly    Decimal             @db.Decimal(12, 2)
+  priceMonthly    Decimal?            @db.Decimal(12, 2)
   priceAnnual     Decimal             @db.Decimal(12, 2)
   perEmployee     Boolean             @default(false)
   extraStorageMb  Int?
   extraAiRequests Int?
   extraApiCalls   Int?
   active          Boolean             @default(true)
+  public          Boolean             @default(true)
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
   subscriptions   SubscriptionAddOn[]

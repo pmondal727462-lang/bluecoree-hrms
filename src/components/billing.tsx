@@ -20,7 +20,7 @@ type AddOn = {
   code: string;
   name: string;
   description: string | null;
-  priceMonthly: number;
+  priceMonthly: number | null;
   priceAnnual: number;
   perEmployee: boolean;
 };
@@ -107,12 +107,30 @@ export function BillingPanel({
   const paid = plans.filter(
     (p) =>
       p.code !== "FREE_TRIAL" &&
-      (p.priceMonthly !== null || p.pricePerEmployeeMonthly !== null),
+      (p.priceMonthly !== null ||
+        p.pricePerEmployeeMonthly !== null ||
+        p.priceAnnual !== null ||
+        p.pricePerEmployeeAnnual !== null),
   );
   const [planCode, setPlan] = useState(
     paid.find((p) => p.code === currentPlan)?.code ?? paid[0]?.code ?? "",
   );
-  const [cycle, setCycle] = useState<"MONTHLY" | "ANNUAL">("MONTHLY");
+  const [cycle, setCycle] = useState<"MONTHLY" | "ANNUAL">("ANNUAL");
+  const selectedPlan = paid.find((p) => p.code === planCode);
+  const monthlyAvailable =
+    selectedPlan &&
+    (selectedPlan.priceMonthly !== null ||
+      selectedPlan.pricePerEmployeeMonthly !== null);
+  const annualAvailable =
+    selectedPlan &&
+    (selectedPlan.priceAnnual !== null ||
+      selectedPlan.pricePerEmployeeAnnual !== null);
+  useEffect(() => {
+    if (cycle === "MONTHLY" && !monthlyAvailable && annualAvailable)
+      setCycle("ANNUAL");
+    if (cycle === "ANNUAL" && !annualAvailable && monthlyAvailable)
+      setCycle("MONTHLY");
+  }, [cycle, monthlyAvailable, annualAvailable]);
   const [chosen, setChosen] = useState<string[]>([]);
   const [coupon, setCoupon] = useState("");
   const [quote, setQuote] = useState<Quote | null>(null);
@@ -244,8 +262,12 @@ export function BillingPanel({
                   setCycle(e.target.value as "MONTHLY" | "ANNUAL")
                 }
               >
-                <option value="MONTHLY">Monthly</option>
-                <option value="ANNUAL">Annual</option>
+                <option value="MONTHLY" disabled={!monthlyAvailable}>
+                  Monthly{!monthlyAvailable ? " (not offered)" : ""}
+                </option>
+                <option value="ANNUAL" disabled={!annualAvailable}>
+                  Annual{!annualAvailable ? " (not offered)" : ""}
+                </option>
               </select>
             </label>
             <label>
@@ -274,7 +296,11 @@ export function BillingPanel({
                 />
                 <span>
                   {a.name} ·{" "}
-                  {inr(cycle === "ANNUAL" ? a.priceAnnual : a.priceMonthly)}
+                  {cycle === "ANNUAL"
+                    ? inr(a.priceAnnual)
+                    : a.priceMonthly === null
+                      ? "Annual billing only"
+                      : inr(a.priceMonthly)}
                   {a.perEmployee ? " per employee" : ""}/
                   {cycle === "ANNUAL" ? "year" : "month"}
                   {a.description && (

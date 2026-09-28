@@ -65,6 +65,10 @@ type Plan = {
   name: string;
   description: string | null;
   priceMonthly: number | null;
+  priceAnnual: number | null;
+  pricePerEmployeeMonthly: number | null;
+  pricePerEmployeeAnnual: number | null;
+  minimumMonthly: number | null;
   currency: string;
   employeeLimit: number | null;
   deviceLimit?: number | null;
@@ -114,7 +118,7 @@ const isoOrNull = (v: string) => (v ? new Date(v).toISOString() : null);
 const num = (v: string) => (v === "" || v === undefined ? null : Number(v));
 
 export function PlatformPage({ me, notify }: { me: Me; notify: Notify }) {
-  const [tab, setTab] = useState("overview");
+  const [tab, setTab] = useState(me.isSuperAdmin ? "companies" : "overview");
   return (
     <>
       <Heading
@@ -123,16 +127,24 @@ export function PlatformPage({ me, notify }: { me: Me; notify: Notify }) {
         text="Manage your clients, their subscriptions and access rights, and the prices published on your website."
       />
       <div className="section-tabs">
-        {[
-          ["overview", "Overview"],
-          ["companies", "Clients & subscriptions"],
-          ["plans", "Website pricing & plans"],
-          ["billing", "Billing"],
-          ["support", "Support"],
-          ["health", "System health"],
-          ["backups", "Backups"],
-          ["audit", "Audit logs"],
-        ].map(([key, text]) => (
+        {(me.isSuperAdmin
+          ? [
+              ["companies", "Client list"],
+              ["subscriptions", "Client subscriptions"],
+              ["add-client", "Add client"],
+              ["plans", "Pricing"],
+            ]
+          : [
+              ["overview", "Overview"],
+              ["companies", "Clients & subscriptions"],
+              ["plans", "Website pricing & plans"],
+              ["billing", "Billing"],
+              ["support", "Support"],
+              ["health", "System health"],
+              ["backups", "Backups"],
+              ["audit", "Audit logs"],
+            ]
+        ).map(([key, text]) => (
           <button
             key={key}
             className={tab === key ? "active" : ""}
@@ -144,12 +156,23 @@ export function PlatformPage({ me, notify }: { me: Me; notify: Notify }) {
       </div>
       {tab === "overview" ? (
         <OverviewTab />
-      ) : tab === "companies" ? (
-        <Companies me={me} notify={notify} />
+      ) : tab === "companies" || tab === "subscriptions" ? (
+        <Companies
+          me={me}
+          notify={notify}
+          subscriptions={tab === "subscriptions"}
+        />
+      ) : tab === "add-client" ? (
+        <CompanyList notify={notify} createOnly />
       ) : tab === "billing" ? (
         <PlatformBilling me={me} notify={notify} />
       ) : tab === "plans" ? (
-        <Plans notify={notify} />
+        <>
+          <Plans notify={notify} />
+          <div className="mt-6">
+            <PlatformBilling me={me} notify={notify} pricingOnly />
+          </div>
+        </>
       ) : tab === "support" ? (
         <Desk me={me} notify={notify} />
       ) : tab === "health" ? (
@@ -201,7 +224,15 @@ function OverviewTab() {
   );
 }
 
-function Companies({ me, notify }: { me: Me; notify: Notify }) {
+function Companies({
+  me,
+  notify,
+  subscriptions = false,
+}: {
+  me: Me;
+  notify: Notify;
+  subscriptions?: boolean;
+}) {
   const client = useQueryClient();
   const [reset, setReset] = useState<{
     user: { name: string; email: string; role: string };
@@ -238,11 +269,13 @@ function Companies({ me, notify }: { me: Me; notify: Notify }) {
   return (
     <section className="card">
       <div className="card-title flex justify-between items-center">
-        <h2>Clients</h2>
-        <Button size="sm" onClick={() => setCreating(!creating)}>
-          <Plus />
-          {creating ? "Hide company creation" : "Create company"}
-        </Button>
+        <h2>{subscriptions ? "Client subscription details" : "Clients"}</h2>
+        {!me.isSuperAdmin && (
+          <Button size="sm" onClick={() => setCreating(!creating)}>
+            <Plus />
+            {creating ? "Hide company creation" : "Create company"}
+          </Button>
+        )}
       </div>
       {creating && (
         <div className="p-6">
@@ -255,11 +288,14 @@ function Companies({ me, notify }: { me: Me; notify: Notify }) {
           "Plan",
           "Status",
           "Ends",
-          "Employees",
-          "Users (30d active)",
-          "API / AI this month",
-          "Integrations",
-          "Last login",
+          "Active employees",
+          ...(subscriptions
+            ? [
+                "Annual price / employee",
+                "Annual base fee",
+                "Annual plan estimate (before tax/add-ons)",
+              ]
+            : ["Users", "Last login"]),
           "",
         ]}
         loading={list.isLoading}
@@ -284,12 +320,33 @@ function Companies({ me, notify }: { me: Me; notify: Notify }) {
           </div>,
           when(c.storedStatus === "TRIAL" ? c.trialEndsAt : c.currentPeriodEnd),
           c.employees,
-          `${c.users} (${c.activeUsers30d})`,
-          `${c.apiCalls} / ${c.aiRequests}`,
-          c.integrations.failing
-            ? `${c.integrations.active} (${c.integrations.failing} failing)`
-            : c.integrations.active,
-          when(c.lastLoginAt),
+          ...(subscriptions
+            ? (() => {
+                const p = plans.data?.find((p) => p.code === c.planCode);
+                const money = (n: number) =>
+                  new Intl.NumberFormat("en-IN", {
+                    style: "currency",
+                    currency: p?.currency ?? "INR",
+                  }).format(n);
+                return [
+                  p?.pricePerEmployeeAnnual != null
+                    ? money(p.pricePerEmployeeAnnual)
+                    : "Custom quote",
+                  p?.priceAnnual != null ? money(p.priceAnnual) : "—",
+                  p &&
+                  (p.priceAnnual !== null || p.pricePerEmployeeAnnual !== null)
+                    ? money(
+                        Math.max(
+                          Number(p.minimumMonthly ?? 0) * 12,
+                          Number(p.priceAnnual ?? 0) +
+                            Number(p.pricePerEmployeeAnnual ?? 0) *
+                              Math.max(1, c.employees),
+                        ),
+                      )
+                    : "Custom quote",
+                ];
+              })()
+            : [c.users, when(c.lastLoginAt)]),
           <div key="a" className="flex gap-1 flex-wrap">
             <Button size="sm" variant="outline" onClick={() => setEdit(c)}>
               Subscription
@@ -301,29 +358,26 @@ function Companies({ me, notify }: { me: Me; notify: Notify }) {
                   variant="outline"
                   onClick={() => setRights(c)}
                 >
-                  Access rights
+                  Client access
                 </Button>
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() =>
-                    act(c, "status", {
-                      status:
-                        c.companyStatus === "SUSPENDED"
-                          ? "ACTIVE"
-                          : "SUSPENDED",
-                      ...(c.companyStatus === "SUSPENDED"
-                        ? {}
-                        : {
-                            reason:
-                              window.prompt(
-                                "Reason for suspension (optional)",
-                              ) ?? undefined,
-                          }),
-                    })
-                  }
+                  onClick={() => {
+                    const enabling = c.companyStatus === "SUSPENDED";
+                    const reason = enabling
+                      ? ""
+                      : window.prompt("Reason for suspension (optional)");
+                    if (reason === null) return;
+                    void act(c, "status", {
+                      status: enabling ? "ACTIVE" : "SUSPENDED",
+                      ...(reason ? { reason } : {}),
+                    });
+                  }}
                 >
-                  {c.companyStatus === "SUSPENDED" ? "Activate" : "Suspend"}
+                  {c.companyStatus === "SUSPENDED"
+                    ? "Enable client"
+                    : "Suspend client"}
                 </Button>
                 {c.storedStatus === "TRIAL" && (
                   <Button
@@ -347,7 +401,7 @@ function Companies({ me, notify }: { me: Me; notify: Notify }) {
                   variant="outline"
                   onClick={() => act(c, "reset-access", {})}
                 >
-                  Reset access
+                  Reset login
                 </Button>
               </>
             )}
@@ -521,15 +575,15 @@ function Plans({ notify }: { notify: Notify }) {
         </Button>
       </div>
       <p className="muted text-xs px-6 pt-4">
-        Blank limits mean unlimited. Price = flat price + per-employee price ×
-        active employees, never below the minimum monthly charge (× 12 for
-        annual), plus add-ons, less coupons, plus GST.
+        Employee capacity is separate from billing. Price = base fee +
+        per-employee price × active employees, never below the minimum monthly
+        charge (× 12 for annual), plus add-ons, less coupons, plus GST.
       </p>
       <Table
         headers={[
           "Plan",
-          "Price / month",
-          "Employees",
+          "Employee price & base fee",
+          "Employee capacity",
           "Admins",
           "Storage MB",
           "API / AI per month",
@@ -540,34 +594,63 @@ function Plans({ notify }: { notify: Notify }) {
         loading={list.isLoading}
         error={list.error}
         empty="No plans."
-        rows={(list.data ?? []).map((p) => [
-          <div key="n">
-            <div className="font-semibold">{p.name}</div>
-            <span className="muted text-xs">{p.code}</span>
-          </div>,
-          p.priceMonthly === null
-            ? "Not set"
-            : `${p.priceMonthly} ${p.currency}`,
-          p.employeeLimit ?? "∞",
-          p.adminLimit ?? "∞",
-          p.storageLimitMb ?? "∞",
-          `${p.apiCallLimitMonthly ?? "∞"} / ${p.aiRequestLimitMonthly ?? "∞"}`,
-          <span key="f" className="text-xs">
-            {p.features.map((f) => featureLabels[f] ?? f).join(", ")}
-          </span>,
-          p.active ? "Offered" : "Hidden",
-          <Button
-            key="e"
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              setFeatures(p.features);
-              setEdit(p);
-            }}
-          >
-            Edit
-          </Button>,
-        ])}
+        rows={(list.data ?? [])
+          .filter((p) => p.public && p.code !== "FREE_TRIAL")
+          .map((p) => [
+            <div key="n">
+              <div className="font-semibold">{p.name}</div>
+              <span className="muted text-xs">{p.code}</span>
+            </div>,
+            <div key="price" className="text-sm">
+              {p.pricePerEmployeeAnnual !== null || p.priceAnnual !== null ? (
+                <>
+                  <div>
+                    {p.currency} {p.pricePerEmployeeAnnual ?? 0} / employee /
+                    year
+                  </div>
+                  <div className="muted">
+                    + {p.currency} {p.priceAnnual ?? 0} annual base fee
+                  </div>
+                </>
+              ) : null}
+              {p.pricePerEmployeeMonthly !== null || p.priceMonthly !== null ? (
+                <>
+                  <div>
+                    {p.currency} {p.pricePerEmployeeMonthly ?? 0} / employee /
+                    month
+                  </div>
+                  <div className="muted">
+                    + {p.currency} {p.priceMonthly ?? 0} monthly base fee
+                  </div>
+                </>
+              ) : (
+                <div className="muted">
+                  {p.priceAnnual !== null || p.pricePerEmployeeAnnual !== null
+                    ? "Annual billing only"
+                    : "Custom quote"}
+                </div>
+              )}
+            </div>,
+            p.employeeLimit ?? "Scales with your team",
+            p.adminLimit ?? "∞",
+            p.storageLimitMb ?? "∞",
+            `${p.apiCallLimitMonthly ?? "∞"} / ${p.aiRequestLimitMonthly ?? "∞"}`,
+            <span key="f" className="text-xs">
+              {p.features.map((f) => featureLabels[f] ?? f).join(", ")}
+            </span>,
+            p.active ? "Offered" : "Hidden",
+            <Button
+              key="e"
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setFeatures(p.features);
+                setEdit(p);
+              }}
+            >
+              Edit
+            </Button>,
+          ])}
       />
       <Dialog
         open={!!edit}

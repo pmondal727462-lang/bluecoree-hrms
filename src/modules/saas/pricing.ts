@@ -49,6 +49,14 @@ export function quote(input: {
 }) {
   const { plan, cycle, employees } = input;
   const annual = cycle === "ANNUAL";
+  if (
+    (annual ? plan.priceAnnual : plan.priceMonthly) == null &&
+    (annual ? plan.pricePerEmployeeAnnual : plan.pricePerEmployeeMonthly) ==
+      null
+  )
+    throw new Error(
+      `The ${plan.name} plan has no ${annual ? "annual" : "monthly"} price. Choose an available billing period or contact sales.`,
+    );
   if (plan.employeeLimit !== null && employees > plan.employeeLimit)
     throw new Error(
       `The ${plan.name} plan allows up to ${plan.employeeLimit} employees.`,
@@ -80,6 +88,8 @@ export function quote(input: {
   if (minimum > planTotal)
     add("Minimum plan charge adjustment", 1, minimum - planTotal);
   for (const a of input.addOns ?? []) {
+    if ((annual ? a.priceAnnual : a.priceMonthly) == null)
+      throw new Error(`${a.name} is not offered for ${period} billing.`);
     const qty = a.perEmployee ? employees : a.quantity;
     add(
       `${a.name} add-on (${period})`,

@@ -12,11 +12,24 @@ const f = new Fixture();
 let a = "";
 const plan = `PRO_${f.prefix}`;
 const coupon = `SAVE10${f.prefix}`;
+const testAddOn = `AI_${f.prefix}`;
 const razorpay: { url: string; body: string }[] = [];
 const secret = "rzp_test_secret";
 const webhookSecret = "rzp_webhook_secret";
 
 beforeAll(async () => {
+  await db.addOn.create({
+    data: {
+      code: testAddOn,
+      name: "Test AI",
+      feature: "ai",
+      priceMonthly: 20,
+      priceAnnual: 200,
+      perEmployee: true,
+      active: true,
+      public: true,
+    },
+  });
   await db.subscriptionPlan.create({
     data: {
       code: plan,
@@ -89,6 +102,7 @@ afterAll(async () => {
     where: { email: `lead@${f.prefix.toLowerCase()}.example.com` },
   });
   await f.cleanup();
+  await db.addOn.deleteMany({ where: { code: testAddOn } });
   await db.coupon.deleteMany({ where: { code: coupon } });
   await db.subscriptionPlan.deleteMany({ where: { code: plan } });
   await db.$disconnect();
@@ -123,7 +137,7 @@ describe("Phase 15 billing", () => {
     const q = await call(f, "subscription/quote", "POST", "admin", {
       planCode: plan,
       cycle: "MONTHLY",
-      addOns: [{ code: "AI_COPILOT" }],
+      addOns: [{ code: testAddOn }],
       couponCode: coupon,
     });
     expect(q.body.data).toMatchObject({
@@ -157,7 +171,7 @@ describe("Phase 15 billing", () => {
     const out = await call(f, "subscription/checkout", "POST", "admin", {
       planCode: plan,
       cycle: "MONTHLY",
-      addOns: [{ code: "AI_COPILOT" }],
+      addOns: [{ code: testAddOn }],
       couponCode: coupon,
     });
     expect(out.status).toBe(200);
@@ -205,7 +219,7 @@ describe("Phase 15 billing", () => {
     expect(sub).toMatchObject({ status: "ACTIVE", billingCycle: "MONTHLY" });
     expect(sub.plan.features).toContain("ai");
     expect(sub.addOns.map((x: { code: string }) => x.code)).toEqual([
-      "AI_COPILOT",
+      testAddOn,
     ]);
     expect(
       (await db.coupon.findUniqueOrThrow({ where: { code: coupon } }))

@@ -44,6 +44,7 @@ import { api } from "@/lib/api-client";
 import type { Me } from "@/types/ui";
 import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
+import { OfflineAttendanceLink } from "./offline-attendance-link";
 import { BrandLogo, CompanyLogo } from "./company-logo";
 import { SubscriptionBanner, SubscriptionPage } from "./saas";
 import { SupportPage } from "./support";
@@ -382,7 +383,10 @@ export function Workspace({ module }: { module: string }) {
           me.permissions.includes(p),
         )));
   const currentNav = nav.find((n) => n.key === module);
-  const canAsk = me.permissions.includes("ai.use") && inPlan("hr-copilot") &&
+  const canAsk =
+    !me.isSuperAdmin &&
+    me.permissions.includes("ai.use") &&
+    inPlan("hr-copilot") &&
     !(me as Me & { faceEnrollmentRequired?: boolean }).faceEnrollmentRequired;
   const denied =
     (currentNav && !canOpen(currentNav)) ||
@@ -413,18 +417,27 @@ export function Workspace({ module }: { module: string }) {
           </div>
         </div>
         <p className="eyebrow px-8 mb-3">Workspace</p>
+        {!me.isSuperAdmin &&
+          me.permissions.includes("attendance.self") &&
+          inPlan("attendance") && (
+            <div className="px-8 mb-4">
+              <OfflineAttendanceLink />
+            </div>
+          )}
         <nav className="overflow-y-auto flex-1">
-          {nav.filter(canOpen).map((n) => (
-            <Link
-              onClick={() => setMobile(false)}
-              key={n.key}
-              href={`/${n.key}`}
-              className={`nav-link ${module === n.key ? "active" : ""}`}
-            >
-              <n.icon size={17} />
-              {n.label}
-            </Link>
-          ))}
+          {nav
+            .filter((n) => !me.isSuperAdmin && canOpen(n))
+            .map((n) => (
+              <Link
+                onClick={() => setMobile(false)}
+                key={n.key}
+                href={`/${n.key}`}
+                className={`nav-link ${module === n.key ? "active" : ""}`}
+              >
+                <n.icon size={17} />
+                {n.label}
+              </Link>
+            ))}
           {me.platformRole && (
             <Link
               href="/admin"
@@ -476,7 +489,9 @@ export function Workspace({ module }: { module: string }) {
             <span className="text-xs muted">Workspace</span>
             <ChevronRight size={12} className="muted" />
             <span className="text-xs font-semibold">
-              {nav.find((n) => n.key === module)?.label || "Companies"}
+              {me.isSuperAdmin
+                ? "Management"
+                : nav.find((n) => n.key === module)?.label || "Companies"}
             </span>
           </div>
           <div className="flex items-center gap-5">
@@ -489,11 +504,18 @@ export function Workspace({ module }: { module: string }) {
               })}
             </span>
             {canAsk && (
-              <Button variant="outline" onClick={() => { setAskReport(false); setAskOpen(true); }} aria-haspopup="dialog">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setAskReport(false);
+                  setAskOpen(true);
+                }}
+                aria-haspopup="dialog"
+              >
                 <MessageSquare size={16} /> Ask Me
               </Button>
             )}
-            <NotificationBell />
+            {!me.isSuperAdmin && <NotificationBell />}
             <Button
               variant="ghost"
               size="icon"
@@ -507,7 +529,10 @@ export function Workspace({ module }: { module: string }) {
               {dark ? <Sun /> : <Moon />}
             </Button>
             <div className="h-8 w-px bg-[var(--border)]" />
-            <Link href="/profile" className="flex gap-3 items-center">
+            <Link
+              href={me.isSuperAdmin ? "/admin" : "/profile"}
+              className="flex gap-3 items-center"
+            >
               <span className="avatar">
                 {me.name
                   .split(" ")
@@ -523,18 +548,31 @@ export function Workspace({ module }: { module: string }) {
           </div>
         </header>
         <main className="content">
-          <SubscriptionBanner me={me} />
+          {!me.isSuperAdmin && <SubscriptionBanner me={me} />}
           {me.passwordChangeRequired || me.mfaSetupRequired ? (
             <SecuritySetupRequired me={me} />
           ) : (me as Me & { faceEnrollmentRequired?: boolean })
               .faceEnrollmentRequired ? (
             <FaceRegistration />
+          ) : me.isSuperAdmin ? (
+            <PlatformPage me={me} notify={setToast} />
           ) : denied ? (
             <div className="card empty">
               You do not have access to this page.
             </div>
           ) : module === "attendance" ? (
-            <AttendancePage me={me} notify={setToast} onAskReport={canAsk ? () => { setAskReport(true); setAskOpen(true); } : undefined} />
+            <AttendancePage
+              me={me}
+              notify={setToast}
+              onAskReport={
+                canAsk
+                  ? () => {
+                      setAskReport(true);
+                      setAskOpen(true);
+                    }
+                  : undefined
+              }
+            />
           ) : module === "leave" ? (
             <LeavePage me={me} notify={setToast} />
           ) : module === "payslips" ? (
@@ -597,7 +635,12 @@ export function Workspace({ module }: { module: string }) {
         </main>
       </div>
       {canAsk && (
-        <Dialog open={askOpen} onOpenChange={setAskOpen} title="Ask Me" description="Your HR assistant. Ask questions or work on drafts without leaving this page.">
+        <Dialog
+          open={askOpen}
+          onOpenChange={setAskOpen}
+          title="Ask Me"
+          description="Your HR assistant. Ask questions or work on drafts without leaving this page."
+        >
           <HRCopilot me={me} report={askReport} />
         </Dialog>
       )}

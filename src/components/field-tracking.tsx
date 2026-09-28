@@ -55,6 +55,7 @@ export function FieldTracking({
   intervalSeconds: number;
 }) {
   const client = useQueryClient();
+  const entitled = !!me.subscription?.plan.features.includes("livetracking");
   const [session, setSession] = useState<Session | null>(null),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -67,15 +68,21 @@ export function FieldTracking({
       api<Session[]>(
         `time/field-tracking?employeeId=${encodeURIComponent(employeeId || "")}`,
       ),
-    enabled: !!employeeId,
+    enabled: entitled && !!employeeId,
     refetchInterval: session ? 15000 : false,
   });
   const manager = useQuery({
     queryKey: ["field-tracking", "manager"],
     queryFn: () => api<Session[]>("time/field-tracking"),
-    enabled: me.permissions.includes("fieldtracking.read"),
+    enabled: entitled && me.permissions.includes("fieldtracking.read"),
     refetchInterval: 15000,
   });
+  useEffect(() => {
+    if (!entitled && watch.current !== null) {
+      navigator.geolocation.clearWatch(watch.current);
+      watch.current = null;
+    }
+  }, [entitled]);
   useEffect(() => {
     const current = own.data?.find((s) => s.status === "ACTIVE") || null;
     if (current && !session) setSession(current);
@@ -171,7 +178,8 @@ export function FieldTracking({
       setBusy(false);
     }
   }
-  if (!enabled && !me.permissions.includes("fieldtracking.read")) return null;
+  if (!entitled || (!enabled && !me.permissions.includes("fieldtracking.read")))
+    return null;
   return (
     <div className="space-y-6">
       {employeeId && (

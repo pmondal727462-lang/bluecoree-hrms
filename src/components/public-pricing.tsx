@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Check, Minus, ArrowUpRight, ShieldCheck } from "lucide-react";
 import { api } from "@/lib/api-client";
+import { basicBenefits, advancedBenefits } from "@/config/pricing-features";
 
 type Plan = {
   code: string;
@@ -23,7 +24,7 @@ type AddOn = {
   code: string;
   name: string;
   description: string | null;
-  priceMonthly: number;
+  priceMonthly: number | null;
   priceAnnual: number;
   perEmployee: boolean;
 };
@@ -84,32 +85,39 @@ export function Pricing() {
   const plans = data.plans.filter((p) => p.code !== "FREE_TRIAL");
   const trial = data.plans.find((p) => p.code === "FREE_TRIAL");
   const period = annual ? "year" : "month";
-  const features = Object.keys(labels).filter((key) =>
-    plans.some((p) => p.features.includes(key)),
+  const liveTracking = data.addOns.find((a) => a.code === "LIVE_TRACKING");
+  const hasMonthly = plans.some(
+    (p) => p.priceMonthly !== null || p.pricePerEmployeeMonthly !== null,
   );
   return (
     <>
       <div className="marketing-pricing-controls">
-        <div
-          className="marketing-billing"
-          role="group"
-          aria-label="Billing period"
-        >
-          <button
-            type="button"
-            aria-pressed={!annual}
-            onClick={() => setAnnual(false)}
+        {hasMonthly ? (
+          <div
+            className="marketing-billing"
+            role="group"
+            aria-label="Billing period"
           >
-            Monthly
-          </button>
-          <button
-            type="button"
-            aria-pressed={annual}
-            onClick={() => setAnnual(true)}
-          >
-            Yearly
-          </button>
-        </div>
+            <button
+              type="button"
+              aria-pressed={!annual}
+              onClick={() => setAnnual(false)}
+            >
+              Monthly
+            </button>
+            <button
+              type="button"
+              aria-pressed={annual}
+              onClick={() => setAnnual(true)}
+            >
+              Yearly
+            </button>
+          </div>
+        ) : (
+          <p className="marketing-eyebrow">
+            ANNUAL BILLING · BASE FEE + EMPLOYEE COUNT
+          </p>
+        )}
         <label>
           Team size{" "}
           <input
@@ -149,7 +157,7 @@ export function Pricing() {
             >
               <p className="marketing-plan-kicker">
                 {p.code === "PROFESSIONAL"
-                  ? "CONNECTED HR & PAYROLL"
+                  ? "ADVANCED WORKFORCE MANAGEMENT"
                   : p.code === "ENTERPRISE"
                     ? "FOR COMPLEX REQUIREMENTS"
                     : "YOUR EVERYDAY ESSENTIALS"}
@@ -175,11 +183,21 @@ export function Pricing() {
                   </>
                 ) : (
                   <>
-                    <strong>Let’s talk</strong>
+                    <strong>
+                      {!annual &&
+                      (p.priceAnnual !== null ||
+                        p.pricePerEmployeeAnnual !== null)
+                        ? "Annual billing"
+                        : "Let’s talk"}
+                    </strong>
                     <small>
                       {overLimit
                         ? "Your team needs a larger plan or a custom quote."
-                        : "A quote tailored to your team and requirements."}
+                        : !annual &&
+                            (p.priceAnnual !== null ||
+                              p.pricePerEmployeeAnnual !== null)
+                          ? "Select Yearly to see the per-employee price."
+                          : "A quote tailored to your team and requirements."}
                     </small>
                   </>
                 )}
@@ -204,19 +222,84 @@ export function Pricing() {
               <p className="marketing-plan-limit">
                 {p.employeeLimit
                   ? `Up to ${p.employeeLimit} employees`
-                  : "No fixed employee limit"}
+                  : p.pricePerEmployeeAnnual !== null ||
+                      p.pricePerEmployeeMonthly !== null
+                    ? "Pay for your employee count"
+                    : "Pricing tailored to your employee count"}
               </p>
               <ul>
-                {p.features.map((f) => (
-                  <li key={f}>
+                {p.code === "PROFESSIONAL" && (
+                  <li>
                     <Check size={16} />
-                    {labels[f] ?? f}
+                    <strong>Everything in Basic +</strong>
                   </li>
-                ))}
+                )}
+                {(p.code === "BASIC"
+                  ? basicBenefits
+                  : p.code === "PROFESSIONAL"
+                    ? advancedBenefits
+                    : p.features.map((f) => ({
+                        label: labels[f] ?? f,
+                        feature: f,
+                        note: undefined,
+                        planned: false,
+                      }))
+                )
+                  .filter((b) => p.features.includes(b.feature))
+                  .map((b) => (
+                    <li key={b.label}>
+                      {b.planned ? <Minus size={16} /> : <Check size={16} />}
+                      <span>
+                        {b.label}
+                        {b.planned && <small className="block">Planned</small>}
+                        {b.note && <small className="block">{b.note}</small>}
+                      </span>
+                    </li>
+                  ))}
               </ul>
             </article>
           );
         })}
+        {liveTracking && (
+          <article className="marketing-plan">
+            <p className="marketing-plan-kicker">OPTIONAL ADD-ON</p>
+            <h2>Live Tracking</h2>
+            <p className="marketing-plan-description">
+              Add live location tracking to Basic or Advanced.
+            </p>
+            <div className="marketing-plan-price">
+              <strong>{money(liveTracking.priceAnnual)}</strong>
+              <span>/employee/year</span>
+              <small>Billed annually · Excludes tax</small>
+            </div>
+            <Link href="/contact" className="marketing-button">
+              Add Live Tracking <ArrowUpRight size={16} />
+            </Link>
+            <div className="marketing-plan-estimate" aria-live="polite">
+              <strong>
+                {money(liveTracking.priceAnnual * employees)} /year
+              </strong>
+              <span>
+                Add-on estimate for {employees} employees. Added to your plan
+                total; no second base fee.
+              </span>
+            </div>
+            <ul>
+              <li>
+                <Check size={16} />
+                Live location during active work sessions
+              </li>
+              <li>
+                <Check size={16} />
+                Employee consent and HR policy controls
+              </li>
+              <li>
+                <Check size={16} />
+                Manager location view and history
+              </li>
+            </ul>
+          </article>
+        )}
       </div>
       {!plans.length && (
         <p className="text-center">
@@ -274,22 +357,19 @@ export function Pricing() {
                 </tr>
               </thead>
               <tbody>
-                {features.map((f) => (
-                  <tr key={f}>
-                    <th scope="row">{labels[f]}</th>
+                {[...basicBenefits, ...advancedBenefits].map((b) => (
+                  <tr key={b.label}>
+                    <th scope="row">{b.label}</th>
                     {plans.map((p) => (
                       <td key={p.code}>
-                        {p.features.includes(f) ? (
-                          <>
-                            <Check aria-hidden="true" size={18} />
-                            <span className="sr-only">Included</span>
-                          </>
-                        ) : (
-                          <>
-                            <Minus aria-hidden="true" size={18} />
-                            <span className="sr-only">Not included</span>
-                          </>
-                        )}
+                        {p.features.includes(b.feature) &&
+                        (p.code === "PROFESSIONAL" || basicBenefits.includes(b))
+                          ? b.planned
+                            ? "Planned"
+                            : b.note
+                              ? b.note
+                              : "Included"
+                          : "—"}
                       </td>
                     ))}
                   </tr>
@@ -299,7 +379,7 @@ export function Pricing() {
           </div>
         </section>
       )}
-      {data.addOns.length > 0 && (
+      {data.addOns.some((a) => a.code !== "LIVE_TRACKING") && (
         <section className="marketing-addons">
           <div className="marketing-section-heading">
             <p className="marketing-eyebrow">BUILD ON YOUR PLAN</p>
@@ -307,19 +387,27 @@ export function Pricing() {
             <p>Optional modules, priced separately from your subscription.</p>
           </div>
           <div>
-            {data.addOns.map((a) => (
-              <article key={a.code}>
-                <h3>{a.code === "AI_COPILOT" ? "Ask Me assistant" : a.name}</h3>
-                <p>{a.description}</p>
-                <strong>
-                  {money(annual ? a.priceAnnual : a.priceMonthly)}{" "}
-                  <small>
-                    /{a.perEmployee ? "employee/" : ""}
-                    {period}
-                  </small>
-                </strong>
-              </article>
-            ))}
+            {data.addOns
+              .filter((a) => a.code !== "LIVE_TRACKING")
+              .map((a) => (
+                <article key={a.code}>
+                  <h3>
+                    {a.code === "AI_COPILOT" ? "Ask Me assistant" : a.name}
+                  </h3>
+                  <p>{a.description}</p>
+                  <strong>
+                    {annual
+                      ? money(a.priceAnnual)
+                      : a.priceMonthly === null
+                        ? "Annual billing only"
+                        : money(a.priceMonthly)}{" "}
+                    <small>
+                      /{a.perEmployee ? "employee/" : ""}
+                      {period}
+                    </small>
+                  </strong>
+                </article>
+              ))}
           </div>
         </section>
       )}

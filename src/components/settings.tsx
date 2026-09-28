@@ -289,7 +289,13 @@ function CompanyPreferences({
     </section>
   );
 }
-export function CompanyList({ notify }: { notify: (s: string) => void }) {
+export function CompanyList({
+  notify,
+  createOnly = false,
+}: {
+  notify: (s: string) => void;
+  createOnly?: boolean;
+}) {
   const client = useQueryClient();
   const { data, error } = useQuery({
     queryKey: ["companies"],
@@ -301,7 +307,7 @@ export function CompanyList({ notify }: { notify: (s: string) => void }) {
       <div className="page-heading">
         <div>
           <div className="eyebrow mb-3">Super Admin</div>
-          <h1>Companies</h1>
+          <h1>{createOnly ? "Add client" : "Companies"}</h1>
           <p>
             Separate workspaces, independent administrators, isolated records.
           </p>
@@ -313,18 +319,19 @@ export function CompanyList({ notify }: { notify: (s: string) => void }) {
       </div>
       {error && <div className="error">{error.message}</div>}
       <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5">
-        {data?.map((c) => (
-          <div className="card p-6" key={c.id}>
-            <Building2 className="text-blue-700 mb-5" />
-            <h2 className="font-bold">{String(c.name)}</h2>
-            <p className="muted text-xs mt-2">
-              Company code · {String(c.code)}
-            </p>
-            <p className="muted text-xs mt-5">
-              Sign in with this company’s account to access its records.
-            </p>
-          </div>
-        ))}
+        {!createOnly &&
+          data?.map((c) => (
+            <div className="card p-6" key={c.id}>
+              <Building2 className="text-blue-700 mb-5" />
+              <h2 className="font-bold">{String(c.name)}</h2>
+              <p className="muted text-xs mt-2">
+                Company code · {String(c.code)}
+              </p>
+              <p className="muted text-xs mt-5">
+                Sign in with this company’s account to access its records.
+              </p>
+            </div>
+          ))}
       </div>
       <Dialog
         open={open}
@@ -370,6 +377,9 @@ export function CompanyList({ notify }: { notify: (s: string) => void }) {
               }),
             });
             await client.invalidateQueries({ queryKey: ["companies"] });
+            await client.invalidateQueries({
+              queryKey: ["platform", "companies"],
+            });
             setOpen(false);
             notify("Company created. Its administrator can now sign in.");
           }}

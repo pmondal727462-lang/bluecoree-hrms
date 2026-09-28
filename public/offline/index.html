@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Offline clock-in | BlueCoreeHR</title>
+    <link rel="stylesheet" href="/offline/style.css" />
+    <script type="module" src="/offline/app.js"></script>
+  </head>
+  <body>
+    <main>
+      <header>
+        <a href="/home">BlueCoree<span>HR</span></a
+        ><span id="network">Checking connection…</span>
+      </header>
+      <section class="intro">
+        <p class="eyebrow">EMPLOYEE ATTENDANCE</p>
+        <h1>Your workday.<br />Even without a signal.</h1>
+        <p>
+          Save a check-in or check-out on this device. Pending punches sync
+          automatically while this page or your employee portal is open and
+          connected.
+        </p>
+      </section>
+      <section class="card">
+        <h2 id="employee">Preparing this device…</h2>
+        <p id="ready">Sign in online once to prepare the offline clock.</p>
+        <p id="message" role="status" aria-live="polite"></p>
+        <div id="camera-area" hidden>
+          <p>
+            A fresh face photo is required for each punch. It stays encrypted on
+            this device until the server verifies it during sync.
+          </p>
+          <video id="camera" autoplay muted playsinline></video
+          ><button id="camera-open" type="button">Open camera</button>
+        </div>
+        <div class="actions">
+          <button id="clock-in" type="button" disabled>Check in</button
+          ><button id="clock-out" type="button" disabled>Check out</button>
+        </div>
+        <p class="small">
+          “Saved on device” is pending attendance. GPS and face checks, shift
+          rules, and payroll locks are applied when it syncs.
+        </p>
+        <div class="links">
+          <button id="prepare" type="button">Refresh offline access</button
+          ><a href="/login">Sign in</a
+          ><a href="/attendance">Attendance report</a>
+        </div>
+      </section>
+      <section class="card">
+        <div class="queue-heading">
+          <h2>On this device</h2>
+          <button id="sync" type="button">Sync now</button>
+        </div>
+        <p id="queue-summary">Loading saved punches…</p>
+        <ul id="queue"></ul>
+        <p class="small">
+          Keep this browser’s site data until all punches are synced. After
+          signing in again, return here or open the employee portal to resume
+          syncing. Offline access lasts 7 days; pending punches can sync for up
+          to 30 days after capture.
+        </p>
+      </section>
+      <footer>BlueCoreeHR · Your people, connected.</footer>
+    </main>
+  </body>
+</html>

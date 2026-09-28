@@ -14,6 +14,8 @@ type Plan = {
   name: string;
   description: string | null;
   priceMonthly: number | null;
+  priceAnnual: number | null;
+  pricePerEmployeeAnnual: number | null;
   currency: string;
   employeeLimit: number | null;
   adminLimit: number | null;
@@ -50,6 +52,7 @@ export const featureLabels: Record<string, string> = {
   expenses: "Expense management",
   onboarding: "Onboarding",
   face: "Face attendance",
+  livetracking: "Live Tracking",
   training: "Training",
   assets: "Assets",
 };
@@ -61,14 +64,16 @@ const usageRows: [string, string, string][] = [
   ["aiRequests", "aiRequests", "AI requests this month"],
 ];
 const price = (p: Plan & { pricePerEmployeeMonthly?: number | null }) =>
-  p.pricePerEmployeeMonthly
-    ? `${new Intl.NumberFormat("en-IN", { style: "currency", currency: p.currency }).format(p.pricePerEmployeeMonthly)} per employee/month${p.priceMonthly ? ` + ${p.priceMonthly}/month` : ""}`
-    : p.priceMonthly === null
-      ? "Contact us"
-      : new Intl.NumberFormat("en-IN", {
-          style: "currency",
-          currency: p.currency,
-        }).format(p.priceMonthly) + "/month";
+  p.pricePerEmployeeAnnual != null
+    ? `${p.currency} ${p.pricePerEmployeeAnnual} per employee/year + ${p.currency} ${p.priceAnnual ?? 0}/year base fee`
+    : p.pricePerEmployeeMonthly
+      ? `${new Intl.NumberFormat("en-IN", { style: "currency", currency: p.currency }).format(p.pricePerEmployeeMonthly)} per employee/month${p.priceMonthly ? ` + ${p.priceMonthly}/month` : ""}`
+      : p.priceMonthly === null
+        ? "Contact us"
+        : new Intl.NumberFormat("en-IN", {
+            style: "currency",
+            currency: p.currency,
+          }).format(p.priceMonthly) + "/month";
 
 export function SubscriptionBanner({ me }: { me: Me }) {
   const s = me.subscription;
@@ -209,7 +214,7 @@ export function SubscriptionPage({ me, notify }: { me: Me; notify: Notify }) {
                     <span className="muted text-xs">{p.description}</span>
                   </div>,
                   price(p),
-                  p.employeeLimit ?? "Unlimited",
+                  p.employeeLimit ?? "Pay by employee count",
                   p.adminLimit ?? "Unlimited",
                   <span key="f" className="text-xs">
                     {p.features.map((f) => featureLabels[f] ?? f).join(", ")}

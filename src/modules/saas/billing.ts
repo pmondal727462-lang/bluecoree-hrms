@@ -94,7 +94,7 @@ async function resolve(client: Client, companyId: string, p: Purchase) {
     throw new AppError(404, "Choose an available paid plan.", "NOT_FOUND");
   const codes = p.addOns.map((a) => a.code);
   const addOns = await client.addOn.findMany({
-    where: { code: { in: codes }, active: true },
+    where: { code: { in: codes }, active: true, public: true },
   });
   if (addOns.length !== new Set(codes).size)
     throw new AppError(
@@ -595,13 +595,14 @@ const addOnSchema = z
     name: z.string().trim().min(1).max(80),
     description: z.string().trim().max(300).nullable().default(null),
     feature: z.string().trim().max(40).nullable().default(null),
-    priceMonthly: decimal(10000000),
+    priceMonthly: decimal(10000000).nullable(),
     priceAnnual: decimal(100000000),
     perEmployee: z.boolean(),
     extraStorageMb: z.number().int().min(0).nullable().default(null),
     extraAiRequests: z.number().int().min(0).nullable().default(null),
     extraApiCalls: z.number().int().min(0).nullable().default(null),
     active: z.boolean(),
+    public: z.boolean().default(true),
   })
   .strict();
 const couponSchema = z

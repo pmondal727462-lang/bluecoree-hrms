@@ -15,6 +15,7 @@ type Client = Prisma.TransactionClient | typeof db;
 export const planFeatures = [
   "attendance",
   "face",
+  "livetracking",
   "payroll",
   "ai",
   "mobile",
@@ -356,7 +357,10 @@ export async function subscriptionRoute(req: NextRequest, ctx: Context) {
       where: { active: true, public: true },
       orderBy: { sortOrder: "asc" },
     }),
-    db.addOn.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+    db.addOn.findMany({
+      where: { active: true, public: true },
+      orderBy: { name: "asc" },
+    }),
     db.company.findUniqueOrThrow({
       where: { id: ctx.companyId },
       select: {
@@ -473,7 +477,12 @@ export async function platformSaas(
         subscription: { include: { plan: true } },
         status: true,
         suspendReason: true,
-        _count: { select: { employees: true, users: true } },
+        _count: {
+          select: {
+            employees: { where: { status: { not: "Inactive" } } },
+            users: true,
+          },
+        },
       },
       orderBy: { name: "asc" },
       take: 500,
@@ -621,7 +630,7 @@ export async function publicPlans() {
       },
     }),
     db.addOn.findMany({
-      where: { active: true },
+      where: { active: true, public: true },
       orderBy: { name: "asc" },
       select: {
         code: true,

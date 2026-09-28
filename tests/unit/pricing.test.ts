@@ -19,6 +19,66 @@ const plan: PricedPlan = {
 };
 
 describe("subscription pricing", () => {
+  it("quotes annual per-employee pricing and rejects an unconfigured monthly cycle", () => {
+    const annualOnly = {
+      ...plan,
+      priceMonthly: null,
+      pricePerEmployeeMonthly: null,
+      priceAnnual: 30000,
+      pricePerEmployeeAnnual: 100,
+      minimumMonthly: null,
+    };
+    expect(
+      quote({
+        plan: annualOnly,
+        cycle: "ANNUAL",
+        employees: 50,
+        sameState: false,
+      }).subtotal,
+    ).toBe(35000);
+    expect(
+      quote({
+        plan: { ...annualOnly, pricePerEmployeeAnnual: 150 },
+        cycle: "ANNUAL",
+        employees: 50,
+        sameState: false,
+      }).subtotal,
+    ).toBe(37500);
+    const tracking = {
+      code: "LIVE_TRACKING",
+      name: "Live Tracking",
+      priceMonthly: null,
+      priceAnnual: 150,
+      perEmployee: true,
+      quantity: 1,
+    };
+    expect(
+      quote({
+        plan: annualOnly,
+        cycle: "ANNUAL",
+        employees: 50,
+        sameState: false,
+        addOns: [tracking],
+      }).subtotal,
+    ).toBe(42500);
+    expect(() =>
+      quote({
+        plan,
+        cycle: "MONTHLY",
+        employees: 50,
+        sameState: false,
+        addOns: [tracking],
+      }),
+    ).toThrow(/not offered for monthly/);
+    expect(() =>
+      quote({
+        plan: annualOnly,
+        cycle: "MONTHLY",
+        employees: 50,
+        sameState: false,
+      }),
+    ).toThrow(/no monthly price/);
+  });
   it("applies the minimum monthly charge to small companies", () => {
     const q = quote({ plan, cycle: "MONTHLY", employees: 10, sameState: true });
     // 1000 + 10 × 50 = 1500, raised to the 3000 minimum.

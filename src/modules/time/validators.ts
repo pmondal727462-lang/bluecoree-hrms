@@ -13,6 +13,15 @@ export const punchSchema = z
     location: location.optional(),
     faceSample: z.string().max(2_000_000).optional(),
     deviceId: z.string().trim().min(8).max(200).optional(),
+    offline: z
+      .object({
+        eventId: z.uuid(),
+        direction: z.enum(["IN", "OUT"]),
+        capturedAt: z.iso.datetime({ offset: true }),
+        permit: z.string().min(20).max(3000),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 export const fieldTrackingStartSchema = z
