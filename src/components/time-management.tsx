@@ -49,7 +49,7 @@ type Shift = {
 };
 // Day status as recorded by the attendance rules.
 const dayStatusLabel = (a: Attendance) =>
-  !a.checkOut
+  !a.checkOut && a.status === "PRESENT" && !a.singlePunchResolved
     ? "Checked in"
     : ((
         {
@@ -96,6 +96,7 @@ type Policy = {
   fieldTrackingMaxMinutes: number;
   faceAttendanceEnabled: boolean;
   overtimeRequiresApproval?: boolean;
+  singlePunchStatus?: string;
   compOffEnabled?: boolean;
   compOffExpiryDays?: number;
   optionalHolidayLimit?: number;
@@ -108,6 +109,7 @@ type Policy = {
   locationName?: string;
 };
 type Attendance = {
+  singlePunchResolved?: boolean;
   id: string;
   employeeId: string;
   employee?: Person;
@@ -2259,6 +2261,7 @@ export function TimeSettings({ me, notify }: Props) {
                     f.get("faceAttendanceEnabled") === "on",
                   overtimeRequiresApproval:
                     f.get("overtimeRequiresApproval") === "on",
+                  singlePunchStatus: f.get("singlePunchStatus"),
                   faceLivenessRequired: f.get("faceLivenessRequired") === "on",
                   faceConfidenceThreshold: Number(
                     f.get("faceConfidenceThreshold"),
@@ -2286,6 +2289,22 @@ export function TimeSettings({ me, notify }: Props) {
               await refresh();
             }}
           >
+            <label>
+              Past day with only one punch
+              <select
+                name="singlePunchStatus"
+                defaultValue={s.policy.singlePunchStatus ?? "MISSED_PUNCH"}
+              >
+                <option value="MISSED_PUNCH">
+                  Missed punch — HR review (no automatic pay deduction)
+                </option>
+                <option value="ABSENT">
+                  Absent — deduct one day when attendance payroll is enabled
+                </option>
+                <option value="PRESENT">Present — no pay deduction</option>
+                <option value="HALF_DAY">Half day — deduct half a day</option>
+              </select>
+            </label>
             <label className="flex items-center gap-2">
               <input
                 name="gpsTrackingEnabled"

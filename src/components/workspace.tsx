@@ -420,7 +420,7 @@ export function Workspace({ module }: { module: string }) {
               className={`nav-link ${["platform", "admin"].includes(module) ? "active" : ""}`}
             >
               <Globe size={17} />
-              {me.isSuperAdmin ? "Owner dashboard" : "Platform"}
+              {me.isSuperAdmin ? "Management dashboard" : "Platform"}
             </Link>
           )}
         </nav>

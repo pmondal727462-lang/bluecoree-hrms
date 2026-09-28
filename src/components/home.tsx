@@ -11,6 +11,7 @@ import { RecordForm } from "./record-form";
 import { Heading, when, type Notify } from "./platform";
 import { SetupChecklist } from "./setup-checklist";
 import { FaceAttendanceCard } from "./time-management";
+import { Celebrations } from "./celebrations";
 
 type Announcement = {
   id: string;
@@ -167,6 +168,7 @@ export function HomePage({ me, notify }: { me: Me; notify: Notify }) {
   );
   return (
     <>
+      <Celebrations />
       {me.permissions.includes("company.write") && (
         <SetupChecklist canDismiss />
       )}

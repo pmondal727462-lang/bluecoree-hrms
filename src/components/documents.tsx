@@ -8,6 +8,7 @@ import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
 import { RecordForm } from "./record-form";
 import { Heading, Pages, Table, when, type Notify } from "./platform";
+import { isEmploymentLetter } from "@/modules/documents/categories";
 
 type Doc = {
   id: string;
@@ -38,6 +39,8 @@ export const documentCategories = [
   "CONTRACT",
   "OFFER_LETTER",
   "APPOINTMENT_LETTER",
+  "INCREMENT_LETTER",
+  "PROMOTION_LETTER",
   "POLICY",
   "ID_PROOF",
   "ADDRESS_PROOF",
@@ -64,10 +67,12 @@ export function DocumentsPage({ me, notify }: { me: Me; notify: Notify }) {
   const manage = me.permissions.includes("documents.manage");
   const tabs = [
     ["own", "My documents"],
+    ["letters", "My employment letters"],
     ["policies", "Company policies"],
     ...(manage
       ? [
           ["company", "All documents"],
+          ["hr-letters", "Employee letters (HR)"],
           ["review", "Awaiting review"],
           ["expiring", "Expiring in 30 days"],
         ]
@@ -78,11 +83,15 @@ export function DocumentsPage({ me, notify }: { me: Me; notify: Notify }) {
   const [page, setPage] = useState(1);
   const [uploading, setUploading] = useState(false);
   const query =
-    tab === "review"
-      ? "scope=company&status=PENDING_APPROVAL"
-      : tab === "expiring"
-        ? "scope=company&expiringDays=30"
-        : `scope=${tab}`;
+    tab === "letters"
+      ? "scope=own&letters=1"
+      : tab === "hr-letters"
+        ? "scope=company&letters=1"
+        : tab === "review"
+          ? "scope=company&status=PENDING_APPROVAL"
+          : tab === "expiring"
+            ? "scope=company&expiringDays=30"
+            : `scope=${tab}`;
   const client = useQueryClient();
   const list = useQuery({
     queryKey: ["documents", query, search, page],
@@ -286,14 +295,16 @@ export function DocumentsPage({ me, notify }: { me: Me; notify: Notify }) {
                 </Button>,
               ])}
             />
-            <NewVersion
-              id={detail.id}
-              onDone={async () => {
-                setDetail(null);
-                notify("New version uploaded.");
-                await refresh();
-              }}
-            />
+            {(manage || !isEmploymentLetter(detail.category)) && (
+              <NewVersion
+                id={detail.id}
+                onDone={async () => {
+                  setDetail(null);
+                  notify("New version uploaded.");
+                  await refresh();
+                }}
+              />
+            )}
           </div>
         )}
       </Dialog>
@@ -376,16 +387,18 @@ function Upload({
           label: "Category",
           type: "select",
           required: true,
-          options: documentCategories.map((c) => ({
-            value: c,
-            label: label(c),
-          })),
+          options: documentCategories
+            .filter((c) => manage || !isEmploymentLetter(c))
+            .map((c) => ({
+              value: c,
+              label: label(c),
+            })),
         },
         ...(manage
           ? [
               {
                 key: "employeeId",
-                label: "Employee (blank = company document)",
+                label: "Employee (required for employment letters)",
                 reference: "employees" as const,
               },
               {
@@ -416,12 +429,16 @@ function Upload({
       submitLabel="Upload"
       onSave={async (v) => {
         if (!file) throw new Error("Choose a file.");
+        if (isEmploymentLetter(v.category) && !v.employeeId)
+          throw new Error("Select the employee who will receive this letter.");
         await api("documents", {
           method: "POST",
           body: JSON.stringify({
             title: v.title,
             category: v.category,
-            visibility: v.visibility || "EMPLOYEE",
+            visibility: isEmploymentLetter(v.category)
+              ? "EMPLOYEE"
+              : v.visibility || "EMPLOYEE",
             employeeId: v.employeeId || null,
             expiresOn: v.expiresOn || null,
             requiresAcknowledgement: v.requiresAcknowledgement === "true",
@@ -431,6 +448,12 @@ function Upload({
         await onDone();
       }}
     >
+      {manage && (
+        <p className="muted text-sm mt-4">
+          Appointment, increment and promotion letters are always private to
+          the selected employee and HR.
+        </p>
+      )}
       <label className="block mt-5">
         File *
         <input

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { product } from "@/config/product";
+import { CompanyLogo } from "./company-logo";
 
 const nav = [
   ["/features", "Features"],
@@ -16,7 +17,7 @@ export function MarketingShell({ children }: { children: ReactNode }) {
       <header className="border-b border-[var(--border)]">
         <div className="max-w-6xl mx-auto px-4 py-4 flex flex-wrap items-center gap-4 justify-between">
           <Link href="/" className="font-bold text-lg">
-            {product.name}
+            <CompanyLogo width={160} />
           </Link>
           <nav className="flex flex-wrap gap-4 text-sm">
             {nav.map(([href, label]) => (
@@ -25,6 +26,7 @@ export function MarketingShell({ children }: { children: ReactNode }) {
               </Link>
             ))}
             <Link href="/login">Sign in</Link>
+            <Link href="/owner/login">Management Login</Link>
             <Link
               href="/start-trial"
               className="px-3 py-1 rounded-lg bg-[var(--primary,#1f4e99)] text-white font-semibold"

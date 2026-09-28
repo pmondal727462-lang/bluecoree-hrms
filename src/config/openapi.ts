@@ -51,7 +51,7 @@ const identifier = {
 export const openapi = {
   openapi: "3.0.3",
   info: {
-    title: "BlueCoree HRMS API",
+    title: "BlueCoreeHR API",
     version: "2.0.0",
     description:
       "Company-isolated REST API. Cookie-authenticated mutations require an Origin header matching APP_URL. Authentication uses HttpOnly JWT cookies with rotating refresh tokens. Web clients use the HttpOnly cookie; the mobile app sends Authorization: Bearer <access token> from /v1/auth/login; integrations use a company API key (X-API-Key or Bearer hrms_...) with scopes. The interactive reference is at /api-docs.",

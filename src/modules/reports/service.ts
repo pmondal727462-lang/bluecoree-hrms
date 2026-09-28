@@ -12,6 +12,8 @@ import {
   type Context,
 } from "@/modules/auth/service";
 import type { PermissionKey } from "@/config/permissions";
+import { effectiveAttendanceStatus } from "@/modules/time/single-punch";
+import { localDay } from "@/modules/time/rules";
 
 type Value = string | number | boolean | null;
 type Field = {
@@ -146,10 +148,12 @@ export const datasets: Record<string, Dataset> = {
         overtimeMinutes: number;
         source: string;
         shiftName: string | null;
+        status: string;
       };
       return [
         ...empFields<R>(),
         f<R>("workDate", "Work date", "date", (r) => d(r.workDate)),
+        f<R>("status", "Attendance status", "string", (r) => r.status),
         f<R>("checkIn", "Check in", "string", (r) => r.checkIn.toISOString()),
         f<R>(
           "checkOut",
@@ -175,12 +179,28 @@ export const datasets: Record<string, Dataset> = {
         f<R>("source", "Source", "string", (r) => r.source),
       ];
     })(),
-    load: (companyId, range) =>
-      db.attendance.findMany({
+    load: async (companyId, range) => {
+      const company = await db.company.findUniqueOrThrow({
+        where: { id: companyId },
+        include: { attendancePolicy: true },
+      });
+      const rows = await db.attendance.findMany({
         where: { companyId, ...(range ? { workDate: range } : {}) },
-        include: { employee: employeeRef },
+        include: {
+          employee: employeeRef,
+          _count: { select: { punches: true } },
+        },
         take: scanLimit,
-      }),
+      });
+      return rows.map((row) => ({
+        ...row,
+        status: effectiveAttendanceStatus(
+          row,
+          company.attendancePolicy?.singlePunchStatus ?? "MISSED_PUNCH",
+          localDay(new Date(), company.timezone),
+        ),
+      }));
+    },
   },
   leave: {
     label: "Leave requests",

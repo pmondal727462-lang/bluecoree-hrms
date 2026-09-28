@@ -119,7 +119,7 @@ export function PlatformPage({ me, notify }: { me: Me; notify: Notify }) {
     <>
       <Heading
         eyebrow={me.isSuperAdmin ? "Software owner" : "Platform support"}
-        title="Owner dashboard"
+        title="Management dashboard"
         text="Manage your clients, their subscriptions and access rights, and the prices published on your website."
       />
       <div className="section-tabs">

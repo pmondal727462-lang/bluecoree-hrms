@@ -8,6 +8,7 @@ datasource db {
 }
 
 model Company {
+  celebrationWishes         CelebrationWish[]
   id                        String                     @id @default(cuid())
   code                      String                     @unique
   name                      String
@@ -152,6 +153,7 @@ model RolePermission {
 }
 
 model User {
+  celebrationWishes  CelebrationWish[]
   id                 String                @id @default(cuid())
   companyId          String
   roleId             String
@@ -338,6 +340,7 @@ model Branch {
 }
 
 model Employee {
+  celebrationWishes         CelebrationWish[]
   id                        String                     @id @default(cuid())
   companyId                 String
   userId                    String?                    @unique
@@ -479,6 +482,7 @@ model AuthChallenge {
 }
 
 model AttendancePolicy {
+  singlePunchStatus            String  @default("MISSED_PUNCH")
   companyId                    String  @id
   gpsTrackingEnabled           Boolean @default(false)
   fieldTrackingEnabled         Boolean @default(false)
@@ -1861,6 +1865,24 @@ model Announcement {
 
   @@index([companyId, publishedAt])
   @@map("announcements")
+}
+
+model CelebrationWish {
+  id         String   @id @default(cuid())
+  companyId  String
+  employeeId String
+  userId     String
+  kind       String
+  date       DateTime @db.Date
+  emoji      String
+  createdAt  DateTime @default(now())
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee   Employee @relation(fields: [employeeId, companyId], references: [id, companyId], onDelete: Cascade)
+  user       User     @relation(fields: [userId, companyId], references: [id, companyId], onDelete: Cascade)
+
+  @@unique([companyId, employeeId, userId, kind, date])
+  @@index([companyId, date])
+  @@map("celebration_wishes")
 }
 
 model Notification {

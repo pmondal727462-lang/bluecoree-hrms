@@ -1,4 +1,4 @@
-# BlueCoree HRMS implementation audit
+# BlueCoreeHR implementation audit
 
 Review date: 26 September 2026. Scope: existing source, Prisma schema and migrations, API routing, authentication/RBAC, UI modules, and automated checks against the supplied 18-phase [master specification](master-specification.md).
 

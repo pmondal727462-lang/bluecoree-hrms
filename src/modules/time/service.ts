@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { effectiveAttendanceStatus } from "./single-punch";
 import {
   assertPayrollOpen,
   assertPayrollOpenRange,
@@ -1037,6 +1038,7 @@ async function listAttendance(req: NextRequest, ctx: Context) {
   const e = isCompany ? null : await own(ctx);
   const c = await db.company.findUniqueOrThrow({
     where: { id: ctx.companyId },
+    include: { attendancePolicy: true },
   });
   const where: Prisma.AttendanceWhereInput = {
     companyId: ctx.companyId,
@@ -1060,7 +1062,10 @@ async function listAttendance(req: NextRequest, ctx: Context) {
   const [items, total, totals] = await db.$transaction([
     db.attendance.findMany({
       where,
-      include: { employee: { select: employeeSelect } },
+      include: {
+        employee: { select: employeeSelect },
+        _count: { select: { punches: true } },
+      },
       orderBy: [{ workDate: "desc" }, { id: "asc" }],
       skip: (q.page - 1) * q.pageSize,
       take: q.pageSize,
@@ -1072,7 +1077,23 @@ async function listAttendance(req: NextRequest, ctx: Context) {
     }),
   ]);
   return {
-    items,
+    items: items.map((a) => {
+      const status = effectiveAttendanceStatus(
+        a,
+        c.attendancePolicy?.singlePunchStatus ?? "MISSED_PUNCH",
+        localDay(new Date(), c.timezone),
+      );
+      return {
+        ...a,
+        status,
+        singlePunchResolved:
+          !a.checkOut &&
+          status === "PRESENT" &&
+          a.workDate < dayDate(localDay(new Date(), c.timezone)) &&
+          (!a.scheduledEnd || a.scheduledEnd <= new Date()) &&
+          a._count.punches <= 1,
+      };
+    }),
     total,
     page: q.page,
     pageSize: q.pageSize,
@@ -1085,6 +1106,7 @@ async function roster(req: NextRequest, ctx: Context) {
   const q = listSchema.parse(Object.fromEntries(req.nextUrl.searchParams));
   const c = await db.company.findUniqueOrThrow({
     where: { id: ctx.companyId },
+    include: { attendancePolicy: true },
   });
   const today = localDay(new Date(), c.timezone),
     date = day.parse(req.nextUrl.searchParams.get("date") ?? today),
@@ -1110,7 +1132,10 @@ async function roster(req: NextRequest, ctx: Context) {
       select: {
         ...employeeSelect,
         shift: true,
-        attendance: { where: { workDate: at } },
+        attendance: {
+          where: { workDate: at },
+          include: { _count: { select: { punches: true } } },
+        },
         rosterEntries: { where: { workDate: at }, include: { shift: true } },
         leaveRequests: {
           where: {
@@ -1141,11 +1166,18 @@ async function roster(req: NextRequest, ctx: Context) {
         // The rostered shift or weekly off for the date replaces the default.
         const planned = rosterEntries[0];
         const a = attendance[0];
+        const effective = a
+          ? effectiveAttendanceStatus(
+              a,
+              c.attendancePolicy?.singlePunchStatus ?? "MISSED_PUNCH",
+              today,
+            )
+          : null;
         return {
           ...e,
           shift: planned ? (planned.weeklyOff ? null : planned.shift) : e.shift,
           rostered: !!planned,
-          attendance: a ?? null,
+          attendance: a ? { ...a, status: effective } : null,
           status: a
             ? ((
                 {
@@ -1155,7 +1187,14 @@ async function roster(req: NextRequest, ctx: Context) {
                   HALF_DAY: "Half day",
                   SHORT: "Short",
                 } as Record<string, string>
-              )[a.status] ?? (a.checkOut ? "Present" : "Checked in"))
+              )[effective!] ??
+              (a.checkOut ||
+              (date < today &&
+                (!a.scheduledEnd || a.scheduledEnd <= new Date()) &&
+                a._count.punches <= 1 &&
+                effective === "PRESENT")
+                ? "Present"
+                : "Checked in"))
             : leaveRequests.length
               ? "On leave"
               : holiday

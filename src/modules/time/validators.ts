@@ -36,6 +36,9 @@ export const policySchema = z
     fieldTrackingMaxMinutes: z.number().int().min(15).max(1440).optional(),
     faceAttendanceEnabled: z.boolean().optional(),
     overtimeRequiresApproval: z.boolean().optional(),
+    singlePunchStatus: z
+      .enum(["MISSED_PUNCH", "PRESENT", "ABSENT", "HALF_DAY"])
+      .optional(),
     faceLivenessRequired: z.literal(true).optional(),
     faceConfidenceThreshold: z.number().min(0.5).max(0.99).optional(),
     faceMaxFailedAttempts: z.number().int().min(1).max(20).optional(),

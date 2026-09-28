@@ -17,6 +17,7 @@
     "db:roles": "tsx scripts/db-roles.ts",
     "db:backfill-bank": "tsx scripts/backfill-bank-accounts.ts",
     "db:seed": "tsx prisma/seed.ts",
+    "db:seed-checking": "tsx scripts/seed-checking.ts",
     "env:init": "tsx scripts/init-env.ts",
     "webhooks:deliver": "tsx scripts/webhooks.ts",
     "biometric:sync": "tsx scripts/biometric-sync.ts",

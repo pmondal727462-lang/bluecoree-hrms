@@ -1,4 +1,4 @@
-# BlueCoree HRMS
+# BlueCoreeHR
 
 A Next.js / React / TypeScript HRMS with PostgreSQL and Prisma. Authentication, companies, configurable roles, employees, core HR, documents, onboarding, attendance, leave, payroll, recruitment, performance, expenses, reports and subscription administration have implementations. Training, assets, native mobile clients and commercial billing remain unfinished. See the [implementation audit](docs/implementation-audit.md) for the master 18-phase status and [foundation fixes](docs/foundation-hardening.md) for the latest changes. Older documents use an earlier phase numbering scheme.
 

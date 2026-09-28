@@ -17,11 +17,14 @@ import { assertStorage } from "@/modules/saas/service";
 import { linkedEmployee } from "@/modules/shared/team";
 import { notify, usersWithPermission } from "@/modules/notifications/service";
 import { paginationSchema } from "@/modules/shared/validators";
+import { employmentLetters, isEmploymentLetter } from "./categories";
 
 export const documentCategories = [
   "CONTRACT",
   "OFFER_LETTER",
   "APPOINTMENT_LETTER",
+  "INCREMENT_LETTER",
+  "PROMOTION_LETTER",
   "POLICY",
   "ID_PROOF",
   "ADDRESS_PROOF",
@@ -156,7 +159,9 @@ export async function documentsRoute(
         visibility: { not: "HR_ONLY" },
       });
     }
-    if (q.get("category")) where.category = q.get("category")!;
+    if (q.get("letters") === "1")
+      where.category = { in: [...employmentLetters] };
+    else if (q.get("category")) where.category = q.get("category")!;
     // Callers requesting pages get totals and title/employee search; older
     // consumers keep the plain capped list.
     const paged = q.has("page");
@@ -207,6 +212,14 @@ export async function documentsRoute(
   if (!id && method === "POST") {
     await rateLimit(`document:${ctx.userId}`, 60);
     const b = createSchema.parse(await json(req, 7_500_000));
+    if (isEmploymentLetter(b.category)) {
+      requirePermission(ctx, "documents.manage");
+      if (!b.employeeId || b.visibility !== "EMPLOYEE")
+        throw new AppError(
+          422,
+          "Employment letters must be assigned to one employee and visible only to that employee and HR.",
+        );
+    }
     let employeeId = b.employeeId;
     if (!a.manage) {
       if (!a.me)
@@ -308,6 +321,8 @@ export async function documentsRoute(
     };
   }
   if (action === "versions" && method === "POST") {
+    if (isEmploymentLetter(doc.category))
+      requirePermission(ctx, "documents.manage");
     if (!a.manage && !own)
       throw new AppError(403, "You cannot update this document.");
     const b = z
@@ -371,6 +386,14 @@ export async function documentsRoute(
   requirePermission(ctx, "documents.manage");
   if (!action && method === "PUT") {
     const b = metaSchema.parse(await json(req));
+    if (
+      isEmploymentLetter(b.category) &&
+      (!doc.employeeId || b.visibility !== "EMPLOYEE")
+    )
+      throw new AppError(
+        422,
+        "Employment letters must be private to the assigned employee and HR.",
+      );
     if (!doc.employeeId && b.visibility === "EMPLOYEE")
       throw new AppError(
         422,

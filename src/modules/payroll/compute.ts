@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { AppError } from "@/lib/errors";
 import { addDays, dayDate, localDay } from "@/modules/time/rules";
 import type { PayrollOptions } from "./rules";
+import { effectiveAttendanceStatus } from "@/modules/time/single-punch";
 
 type Tx = Prisma.TransactionClient;
 const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -57,7 +58,7 @@ export async function attendanceLop(
   const { start, end } = monthBounds(period);
   const company = await tx.company.findUniqueOrThrow({
     where: { id: companyId },
-    select: { workingDays: true, timezone: true },
+    select: { workingDays: true, timezone: true, attendancePolicy: true },
   });
   const today = localDay(new Date(), company.timezone);
   const last = iso(end) < today ? iso(end) : addDays(today, -1);
@@ -98,7 +99,13 @@ export async function attendanceLop(
         employeeId: employee.id,
         workDate: { gte: start, lte: end },
       },
-      select: { workDate: true, status: true, checkOut: true },
+      select: {
+        workDate: true,
+        status: true,
+        checkOut: true,
+        scheduledEnd: true,
+        _count: { select: { punches: true } },
+      },
     }),
   ]);
   const holiday = new Set(holidays.map((h) => iso(h.date)));
@@ -120,8 +127,13 @@ export async function attendanceLop(
       lop += onLeave?.halfDay ? 0.5 : 1;
       continue;
     }
-    if (a.status === "ABSENT") lop += 1;
-    else if (["HALF_DAY", "SHORT"].includes(a.status) && !onLeave) lop += 0.5;
+    const status = effectiveAttendanceStatus(
+      a,
+      company.attendancePolicy?.singlePunchStatus ?? "MISSED_PUNCH",
+      today,
+    );
+    if (status === "ABSENT") lop += onLeave?.halfDay ? 0.5 : 1;
+    else if (["HALF_DAY", "SHORT"].includes(status) && !onLeave) lop += 0.5;
   }
   return lop;
 }

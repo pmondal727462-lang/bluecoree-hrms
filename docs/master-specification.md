@@ -1,10 +1,10 @@
-# BlueCoree HRMS — master development specification
+# BlueCoreeHR — master development specification
 
 Supplied by the product owner on 27 September 2026. This is the reference for the 18-phase status in [implementation-audit.md](implementation-audit.md). Section numbers match the original.
 
 ## 1–2. Product and objective
 
-Working name **BlueCoree HRMS**; name and branding must be changeable. A commercial, production-ready, multi-tenant HRMS/HRIS SaaS sold to multiple companies, comparable to modern Indian HRMS platforms: Core HR, employee management, ESS, attendance, biometric, AI face attendance, GPS, geo-tagging, geo-fencing, leave, shift/roster, overtime, payroll, PF, ESI, PT, TDS, recruitment/ATS, onboarding, performance, OKR/KPI, L&D, expenses, assets, documents, HR helpdesk, AI HR Copilot, analytics, mobile app, API integrations, accounting/ERP integration, SaaS subscriptions, billing, free trial, Super Admin, white-label, enterprise security. Each company's data (employees, attendance, payroll, documents, salary, leave, recruitment, reports, API data) must be completely isolated.
+Working name **BlueCoreeHR**; name and branding must be changeable. A commercial, production-ready, multi-tenant HRMS/HRIS SaaS sold to multiple companies, comparable to modern Indian HRMS platforms: Core HR, employee management, ESS, attendance, biometric, AI face attendance, GPS, geo-tagging, geo-fencing, leave, shift/roster, overtime, payroll, PF, ESI, PT, TDS, recruitment/ATS, onboarding, performance, OKR/KPI, L&D, expenses, assets, documents, HR helpdesk, AI HR Copilot, analytics, mobile app, API integrations, accounting/ERP integration, SaaS subscriptions, billing, free trial, Super Admin, white-label, enterprise security. Each company's data (employees, attendance, payroll, documents, salary, leave, recruitment, reports, API data) must be completely isolated.
 
 ## 3. Technology stack
 

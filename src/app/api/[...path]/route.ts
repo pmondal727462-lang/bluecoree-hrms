@@ -81,6 +81,7 @@ import {
 } from "@/modules/employees/contacts";
 import { redeemSignedUrl } from "@/lib/storage";
 import { documentsRoute } from "@/modules/documents/service";
+import { celebrations } from "@/modules/dashboard/celebrations";
 import { helpdeskRoute } from "@/modules/helpdesk/service";
 import {
   onboardingPortal,
@@ -224,6 +225,7 @@ async function route(
     if (apiKey) return ok(await publicApi(req, apiKey, path[1], path[2]));
     const ctx = await authenticate(req);
     return await withTenant(ctx.companyId, async () => {
+      if (route === "celebrations") return ok(await celebrations(req, ctx));
       if (path[0] === "references" && path.length === 2 && method === "GET")
         return ok(await references(req, ctx, path[1]));
       // Paid modules are paused, not deleted, when the plan lacks them or expires.

@@ -155,7 +155,7 @@ export function AuthForm({
           </div>
           <h1>
             {owner
-              ? "Software owner sign in"
+              ? "Management Login"
               : setup
                 ? "Create your workspace"
                 : "Welcome back"}
@@ -221,7 +221,7 @@ export function AuthForm({
           )}
           <label>
             {owner
-              ? "Owner email address"
+              ? "Management email address"
               : setup
                 ? "Admin email address"
                 : "Email, mobile number, or employee code"}{" "}
@@ -305,7 +305,7 @@ export function AuthForm({
               href={owner ? "/login" : "/owner/login"}
               className="block text-center text-sm text-blue-700 mt-4"
             >
-              {owner ? "Client sign in" : "Software owner sign in"}
+                {owner ? "Client sign in" : "Management Login"}
             </Link>
           )}
         </form>
