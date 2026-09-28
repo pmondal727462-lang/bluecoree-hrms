@@ -43,6 +43,7 @@ import {
 import { api } from "@/lib/api-client";
 import type { Me } from "@/types/ui";
 import { Button } from "./ui/button";
+import { Dialog } from "./ui/dialog";
 import { BrandLogo, CompanyLogo } from "./company-logo";
 import { SubscriptionBanner, SubscriptionPage } from "./saas";
 import { SupportPage } from "./support";
@@ -90,7 +91,6 @@ const nav = [
     icon: UserPlus,
     permission: "onboarding.manage",
   },
-  { key: "hr-copilot", label: "HR Copilot", icon: Globe, permission: "ai.use" },
   {
     key: "attendance",
     label: "Attendance",
@@ -257,6 +257,15 @@ const navFeature: Record<string, string> = {
   dashboard: "reports",
 };
 export function Workspace({ module }: { module: string }) {
+  const [askOpen, setAskOpen] = useState(false);
+  const [askReport, setAskReport] = useState(false);
+  useEffect(() => {
+    const query = new URLSearchParams(window.location.search);
+    if (query.has("ask")) {
+      setAskOpen(true);
+      setAskReport(query.has("report"));
+    }
+  }, []);
   const [mobile, setMobile] = useState(false),
     [dark, setDark] = useState(false),
     [toast, setToast] = useState("");
@@ -373,6 +382,8 @@ export function Workspace({ module }: { module: string }) {
           me.permissions.includes(p),
         )));
   const currentNav = nav.find((n) => n.key === module);
+  const canAsk = me.permissions.includes("ai.use") && inPlan("hr-copilot") &&
+    !(me as Me & { faceEnrollmentRequired?: boolean }).faceEnrollmentRequired;
   const denied =
     (currentNav && !canOpen(currentNav)) ||
     (["companies", "platform", "admin"].includes(module) && !me.platformRole) ||
@@ -477,6 +488,11 @@ export function Workspace({ module }: { module: string }) {
                 year: "numeric",
               })}
             </span>
+            {canAsk && (
+              <Button variant="outline" onClick={() => { setAskReport(false); setAskOpen(true); }} aria-haspopup="dialog">
+                <MessageSquare size={16} /> Ask Me
+              </Button>
+            )}
             <NotificationBell />
             <Button
               variant="ghost"
@@ -517,10 +533,8 @@ export function Workspace({ module }: { module: string }) {
             <div className="card empty">
               You do not have access to this page.
             </div>
-          ) : module === "hr-copilot" ? (
-            <HRCopilot me={me} />
           ) : module === "attendance" ? (
-            <AttendancePage me={me} notify={setToast} />
+            <AttendancePage me={me} notify={setToast} onAskReport={canAsk ? () => { setAskReport(true); setAskOpen(true); } : undefined} />
           ) : module === "leave" ? (
             <LeavePage me={me} notify={setToast} />
           ) : module === "payslips" ? (
@@ -582,6 +596,11 @@ export function Workspace({ module }: { module: string }) {
           )}
         </main>
       </div>
+      {canAsk && (
+        <Dialog open={askOpen} onOpenChange={setAskOpen} title="Ask Me" description="Your HR assistant. Ask questions or work on drafts without leaving this page.">
+          <HRCopilot me={me} report={askReport} />
+        </Dialog>
+      )}
       {toast && (
         <div className="toast" role="status">
           {toast}

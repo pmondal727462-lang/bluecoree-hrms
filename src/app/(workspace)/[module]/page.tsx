@@ -1,15 +1,20 @@
 import { Workspace } from "@/components/workspace";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 export default async function Page({
   params,
+  searchParams,
 }: {
   params: Promise<{ module: string }>;
+  searchParams: Promise<{ report?: string }>;
 }) {
   const { module } = await params;
+  if (module === "hr-copilot") {
+    const { report } = await searchParams;
+    redirect(report === "attendance" ? "/attendance?ask=1&report=attendance" : "/home?ask=1");
+  }
   if (
     ![
       "dashboard",
-      "hr-copilot",
       "attendance",
       "leave",
       "time-settings",

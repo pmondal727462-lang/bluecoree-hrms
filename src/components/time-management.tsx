@@ -1094,7 +1094,7 @@ function Rosters({
   );
 }
 
-export function AttendancePage({ me, notify }: Props) {
+export function AttendancePage({ me, notify, onAskReport }: Props & { onAskReport?: () => void }) {
   const client = useQueryClient(),
     summary = useSummary();
   const canRead = me.permissions.includes("attendance.read"),
@@ -1169,13 +1169,14 @@ export function AttendancePage({ me, notify }: Props) {
         <div>
           <div className="eyebrow mb-3">Time & presence</div>
           <h1>Attendance</h1>
-          {me.permissions.includes("ai.reports") && (
-            <Link
+          {me.permissions.includes("ai.reports") && onAskReport && (
+            <button
+              type="button"
               className="text-blue-700 underline"
-              href="/hr-copilot?report=attendance"
+              onClick={onAskReport}
             >
-              AI Summary
-            </Link>
+              Ask Me for an attendance summary
+            </button>
           )}
           <p>
             Check in, review daily presence, and track working hours ·{" "}
