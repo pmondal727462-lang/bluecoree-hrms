@@ -20,6 +20,11 @@ import { password } from "@/modules/shared/validators";
 import { product } from "@/config/product";
 import { entitlements } from "./service";
 import { moduleAllowed } from "@/lib/module-access";
+import {
+  deliverLeadNotifications,
+  initialLeadNotifications,
+} from "./lead-notifications";
+import { logger } from "@/lib/errors";
 
 const signupSchema = z
   .object({
@@ -210,13 +215,20 @@ export async function contactRoute(req: NextRequest) {
   const b = contactSchema.parse(await json(req));
   if (!b.website) {
     const { website: _w, ...lead } = b;
-    await db.contactLead.create({ data: { ...lead, ip: ip(req) } });
-    if (emailConfigured() && process.env.SALES_EMAIL)
-      await sendAuthEmail(
-        process.env.SALES_EMAIL,
-        `New enquiry from ${b.name}`,
-        `${b.name} <${b.email}> ${b.company ?? ""} ${b.phone ?? ""}\nEmployees: ${b.employees ?? "-"}\n\n${b.message}`,
-      ).catch(() => undefined);
+    const saved = await db.contactLead.create({
+      data: {
+        ...lead,
+        ip: ip(req),
+        notificationState: initialLeadNotifications(),
+        nextNotificationAt: new Date(),
+      },
+    });
+    await deliverLeadNotifications(saved.id).catch(() =>
+      logger.warn(
+        { leadId: saved.id },
+        "Enquiry saved; notification worker will retry delivery",
+      ),
+    );
   }
   return { received: true };
 }

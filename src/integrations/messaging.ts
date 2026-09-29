@@ -89,3 +89,51 @@ export async function sendWhatsApp(to: string, text: string) {
   );
   if (!res.ok) throw new Error(`WhatsApp failed (${res.status})`);
 }
+
+// Approved templates support proactive notifications without a prior chat.
+export async function sendWhatsAppTemplate(
+  to: string,
+  name: string,
+  parameters: string[],
+) {
+  if (!whatsappConfigured()) throw new Error("WhatsApp is not configured.");
+  const version = process.env.WHATSAPP_API_VERSION || "v21.0";
+  if (!/^v\d+\.\d+$/.test(version))
+    throw new Error("Invalid WhatsApp API version.");
+  const response = await fetch(
+    `https://graph.facebook.com/${version}/${encodeURIComponent(process.env.WHATSAPP_PHONE_NUMBER_ID!)}/messages`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to: to.replace(/^\+/, ""),
+        type: "template",
+        template: {
+          name,
+          language: {
+            code: process.env.WHATSAPP_LEAD_TEMPLATE_LANGUAGE || "en_US",
+          },
+          components: [
+            {
+              type: "body",
+              parameters: parameters.map((text) => ({
+                type: "text",
+                text: text.replace(/\s+/g, " ").trim() || "Not provided",
+              })),
+            },
+          ],
+        },
+      }),
+      signal: AbortSignal.timeout(10000),
+    },
+  );
+  if (!response.ok)
+    throw new Error(`WhatsApp template failed (${response.status})`);
+  const result = (await response.json()) as { messages?: { id?: string }[] };
+  if (!result.messages?.[0]?.id)
+    throw new Error("WhatsApp did not accept the message.");
+}

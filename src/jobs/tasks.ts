@@ -10,6 +10,7 @@ import { carryForward } from "@/modules/time/leave-admin";
 import { runBackup } from "@/modules/platform/backup";
 import { notify, usersWithPermission } from "@/modules/notifications/service";
 import { localDay } from "@/modules/time/rules";
+import { deliverPendingLeadNotifications } from "@/modules/saas/lead-notifications";
 
 // Scheduled work (spec §66). Each task is idempotent, so a missed or
 // repeated run is harmless. Patterns are cron in UTC.
@@ -169,6 +170,10 @@ export const tasks: Record<
   string,
   { pattern: string; run: () => Promise<Record<string, number>> }
 > = {
+  "contact-leads": {
+    pattern: "*/5 * * * *",
+    run: deliverPendingLeadNotifications,
+  },
   webhooks: { pattern: "* * * * *", run: () => deliverDue(undefined, 500) },
   "biometric-sync": { pattern: "*/5 * * * *", run: () => syncDueDevices() },
   "training-reminders": {

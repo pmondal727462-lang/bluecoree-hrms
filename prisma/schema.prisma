@@ -2686,6 +2686,11 @@ model ContactLead {
   message   String
   ip        String?
   createdAt DateTime @default(now())
+  notificationState Json @default("{}")
+  nextNotificationAt DateTime?
+  notificationLockedUntil DateTime?
+
+  @@index([nextNotificationAt])
 
   @@map("contact_leads")
 }

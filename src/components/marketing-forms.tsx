@@ -4,14 +4,26 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api-client";
 import { Button } from "./ui/button";
+import { salesContact } from "@/config/sales";
 
 export function ContactForm() {
+  const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState("");
   if (done)
     return (
       <div className="card p-6">
-        Thank you. We will get back to you within one working day.
+        <p>
+          Thank you. Your enquiry has been saved. Our team will contact you.
+        </p>
+        <a
+          className="underline inline-block mt-3"
+          href={salesContact.whatsappUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Chat with BlueCoreeHR on WhatsApp
+        </a>
       </div>
     );
   return (
@@ -21,6 +33,7 @@ export function ContactForm() {
         e.preventDefault();
         const f = new FormData(e.currentTarget);
         setError("");
+        setBusy(true);
         try {
           await api("public/contact", {
             method: "POST",
@@ -32,13 +45,15 @@ export function ContactForm() {
               ...(f.get("employees")
                 ? { employees: Number(f.get("employees")) }
                 : {}),
-              message: f.get("message"),
+              message: `${f.get("requestType")}: ${f.get("message")}`,
               website: f.get("website") || undefined,
             }),
           });
           setDone(true);
         } catch (err) {
           setError((err as Error).message);
+        } finally {
+          setBusy(false);
         }
       }}
     >
@@ -56,11 +71,18 @@ export function ContactForm() {
       </label>
       <label>
         Phone
-        <input name="phone" />
+        <input name="phone" type="tel" required maxLength={30} />
       </label>
       <label>
         Employees
         <input name="employees" type="number" min={1} />
+      </label>
+      <label>
+        I would like to
+        <select name="requestType" defaultValue="Request a demo">
+          <option>Request a demo</option>
+          <option>Talk to sales</option>
+        </select>
       </label>
       <input
         name="website"
@@ -71,11 +93,21 @@ export function ContactForm() {
       />
       <label className="sm:col-span-2">
         How can we help?
-        <textarea name="message" required minLength={5} rows={4} />
+        <textarea
+          name="message"
+          required
+          minLength={5}
+          maxLength={2900}
+          rows={4}
+        />
       </label>
       {error && <div className="error sm:col-span-2">{error}</div>}
       <div className="sm:col-span-2">
-        <Button>Send</Button>
+        <p className="muted text-xs mb-3">
+          Your details will be shared with the BlueCoreeHR sales team by email
+          and WhatsApp so we can respond to your enquiry.
+        </p>
+        <Button disabled={busy}>{busy ? "Sending…" : "Send enquiry"}</Button>
       </div>
     </form>
   );

@@ -498,10 +498,12 @@ function Companies({
                 label: "Plan",
                 type: "select",
                 required: true,
-                options: (plans.data ?? []).map((p) => ({
-                  value: p.code,
-                  label: p.name,
-                })),
+                options: (plans.data ?? [])
+                  .filter((p) => ["BASIC", "PROFESSIONAL"].includes(p.code))
+                  .map((p) => ({
+                    value: p.code,
+                    label: p.name,
+                  })),
               },
               {
                 key: "status",
@@ -566,22 +568,12 @@ function Plans({ notify }: { notify: Notify }) {
     queryKey: ["platform", "plans"],
     queryFn: () => api<Plan[]>("platform/plans"),
   });
-  const [edit, setEdit] = useState<Plan | "new" | null>(null),
+  const [edit, setEdit] = useState<Plan | null>(null),
     [features, setFeatures] = useState<string[]>([]);
   return (
     <section className="card">
       <div className="card-title flex justify-between items-center">
         <h2>Website pricing & plans</h2>
-        <Button
-          size="sm"
-          onClick={() => {
-            setFeatures([]);
-            setEdit("new");
-          }}
-        >
-          <Plus />
-          Add plan
-        </Button>
       </div>
       <p className="muted text-xs px-6 pt-4">
         Employee capacity is separate from billing. Price = base fee +
@@ -604,11 +596,10 @@ function Plans({ notify }: { notify: Notify }) {
         error={list.error}
         empty="No plans."
         rows={(list.data ?? [])
-          .filter((p) => p.public && p.code !== "FREE_TRIAL")
+          .filter((p) => ["BASIC", "PROFESSIONAL"].includes(p.code))
           .map((p) => [
             <div key="n">
               <div className="font-semibold">{p.name}</div>
-              <span className="muted text-xs">{p.code}</span>
             </div>,
             <div key="price" className="text-sm">
               {p.pricePerEmployeeAnnual !== null || p.priceAnnual !== null ? (
@@ -664,27 +655,16 @@ function Plans({ notify }: { notify: Notify }) {
       <Dialog
         open={!!edit}
         onOpenChange={(v) => !v && setEdit(null)}
-        title={edit === "new" ? "Add plan" : "Edit plan"}
+        title={edit ? `Edit ${edit.name}` : "Edit plan"}
       >
         {edit && (
           <RecordForm
-            initial={
-              edit === "new"
-                ? {
-                    active: "true",
-                    public: "true",
-                    currency: "INR",
-                    sortOrder: 10,
-                  }
-                : {
-                    ...edit,
-                    active: String(edit.active),
-                    public: String(edit.public),
-                  }
-            }
+            initial={{
+              ...edit,
+              active: String(edit.active),
+              public: String(edit.public),
+            }}
             fields={[
-              { key: "code", label: "Code (A-Z, 0-9, _)", required: true },
-              { key: "name", label: "Name", required: true },
               {
                 key: "priceMonthly",
                 label: "Monthly price (flat)",
@@ -736,11 +716,6 @@ function Plans({ notify }: { notify: Notify }) {
                 type: "number",
               },
               {
-                key: "trialDays",
-                label: "Trial days (trial plans)",
-                type: "number",
-              },
-              {
                 key: "sortOrder",
                 label: "Sort order",
                 type: "number",
@@ -770,36 +745,33 @@ function Plans({ notify }: { notify: Notify }) {
             ]}
             onCancel={() => setEdit(null)}
             onSave={async (v) => {
-              await api(
-                `platform/plans${edit === "new" ? "" : "/" + edit.id}`,
-                {
-                  method: edit === "new" ? "POST" : "PUT",
-                  body: JSON.stringify({
-                    code: v.code.trim().toUpperCase(),
-                    name: v.name,
-                    description: v.description || null,
-                    priceMonthly: num(v.priceMonthly),
-                    priceAnnual: num(v.priceAnnual),
-                    pricePerEmployeeMonthly: num(v.pricePerEmployeeMonthly),
-                    pricePerEmployeeAnnual: num(v.pricePerEmployeeAnnual),
-                    minimumMonthly: num(v.minimumMonthly),
-                    taxRate: num(v.taxRate) ?? 18,
-                    locationLimit: num(v.locationLimit),
-                    currency: v.currency.toUpperCase(),
-                    employeeLimit: num(v.employeeLimit),
-                    deviceLimit: num(v.deviceLimit),
-                    adminLimit: num(v.adminLimit),
-                    storageLimitMb: num(v.storageLimitMb),
-                    apiCallLimitMonthly: num(v.apiCallLimitMonthly),
-                    aiRequestLimitMonthly: num(v.aiRequestLimitMonthly),
-                    trialDays: num(v.trialDays),
-                    sortOrder: Number(v.sortOrder),
-                    active: v.active === "true",
-                    public: v.public === "true",
-                    features,
-                  }),
-                },
-              );
+              await api(`platform/plans/${edit.id}`, {
+                method: "PUT",
+                body: JSON.stringify({
+                  code: edit.code,
+                  name: edit.code === "BASIC" ? "Basic" : "Advanced",
+                  description: v.description || null,
+                  priceMonthly: num(v.priceMonthly),
+                  priceAnnual: num(v.priceAnnual),
+                  pricePerEmployeeMonthly: num(v.pricePerEmployeeMonthly),
+                  pricePerEmployeeAnnual: num(v.pricePerEmployeeAnnual),
+                  minimumMonthly: num(v.minimumMonthly),
+                  taxRate: num(v.taxRate) ?? 18,
+                  locationLimit: num(v.locationLimit),
+                  currency: v.currency.toUpperCase(),
+                  employeeLimit: num(v.employeeLimit),
+                  deviceLimit: num(v.deviceLimit),
+                  adminLimit: num(v.adminLimit),
+                  storageLimitMb: num(v.storageLimitMb),
+                  apiCallLimitMonthly: num(v.apiCallLimitMonthly),
+                  aiRequestLimitMonthly: num(v.aiRequestLimitMonthly),
+                  trialDays: edit.trialDays,
+                  sortOrder: Number(v.sortOrder),
+                  active: v.active === "true",
+                  public: v.public === "true",
+                  features,
+                }),
+              });
               setEdit(null);
               notify("Plan saved.");
               await client.invalidateQueries({ queryKey: ["platform"] });
