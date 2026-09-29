@@ -492,6 +492,8 @@ export async function platformSaas(
         subscription: { include: { plan: true } },
         status: true,
         suspendReason: true,
+        legalHold: true,
+        users: { where: { isSuperAdmin: true }, select: { id: true }, take: 1 },
         _count: {
           select: {
             employees: { where: { status: { not: "Inactive" } } },
@@ -551,6 +553,14 @@ export async function platformSaas(
         effectiveEmployeeLimit: sub ? employeeLicenceLimit(sub) : null,
         users: c._count.users,
         companyStatus: c.status,
+        deletionBlockedReason:
+          c.id === ctx.companyId
+            ? "You cannot delete the company you are signed in to."
+            : c.users.length
+              ? "Move platform owner accounts to another company before deleting this company."
+              : c.legalHold
+                ? "This company is under a legal hold."
+                : null,
         suspendReason: c.suspendReason,
         lastLoginAt:
           lastLogins.find((l) => l.companyId === c.id)?._max.lastLoginAt ??

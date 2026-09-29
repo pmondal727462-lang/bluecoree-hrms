@@ -16,6 +16,7 @@ import {
 import { supportDesk } from "@/modules/support/service";
 import { backupConfig, nextBackups } from "./backup";
 import { healthHistory, runHealthChecks } from "./health";
+import { deleteCompany } from "./delete-company";
 
 const serializeBackup = <T extends { sizeBytes: bigint | null }>(b: T) => ({
   ...b,
@@ -407,6 +408,10 @@ async function platform(
   };
   const [, resource, id, action] = path;
   const method = req.method;
+  if (resource === "companies" && id && !action && method === "DELETE") {
+    superOnly();
+    return deleteCompany(req, ctx, id);
+  }
   if (resource === "overview" && method === "GET") return overview();
   if (resource === "backups" && method === "GET") return backupStatus();
   if (resource === "health" && method === "GET")

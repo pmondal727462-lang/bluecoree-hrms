@@ -11,6 +11,7 @@ import { runBackup } from "@/modules/platform/backup";
 import { notify, usersWithPermission } from "@/modules/notifications/service";
 import { localDay } from "@/modules/time/rules";
 import { deliverPendingLeadNotifications } from "@/modules/saas/lead-notifications";
+import { cleanupDeletedCompanyFiles } from "@/modules/platform/delete-company";
 
 // Scheduled work (spec §66). Each task is idempotent, so a missed or
 // repeated run is harmless. Patterns are cron in UTC.
@@ -170,6 +171,10 @@ export const tasks: Record<
   string,
   { pattern: string; run: () => Promise<Record<string, number>> }
 > = {
+  "company-file-cleanup": {
+    pattern: "*/5 * * * *",
+    run: cleanupDeletedCompanyFiles,
+  },
   "contact-leads": {
     pattern: "*/5 * * * *",
     run: deliverPendingLeadNotifications,

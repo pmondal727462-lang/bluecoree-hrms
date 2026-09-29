@@ -37,6 +37,7 @@ type Overview = {
 };
 type CompanyRow = {
   id: string;
+  deletionBlockedReason: string | null;
   companyStatus: string;
   suspendReason: string | null;
   lastLoginAt: string | null;
@@ -240,6 +241,10 @@ function Companies({
     user: { name: string; email: string; role: string };
     resetUrl: string;
   } | null>(null);
+  const [deleting, setDeleting] = useState<CompanyRow | null>(null);
+  const [deleteCode, setDeleteCode] = useState("");
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const act = async (
     c: CompanyRow,
     action: string,
@@ -405,11 +410,118 @@ function Companies({
                 >
                   Reset login
                 </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => {
+                    setDeleting(c);
+                    setDeleteCode("");
+                    setDeleteError("");
+                  }}
+                >
+                  Delete company
+                </Button>
               </>
             )}
           </div>,
         ])}
       />
+      <Dialog
+        open={!!deleting}
+        onOpenChange={(open) => {
+          if (!open && !deleteBusy) setDeleting(null);
+        }}
+        title={`Delete ${deleting?.name ?? "company"}?`}
+        description="Permanently removes this company and its users, employee records, attendance, payroll, documents, subscriptions and other company data. This cannot be undone."
+      >
+        {deleting && (
+          <form
+            className="space-y-4"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              if (
+                deleteBusy ||
+                deleting.deletionBlockedReason ||
+                deleteCode !== deleting.code
+              )
+                return;
+              setDeleteBusy(true);
+              setDeleteError("");
+              try {
+                const result = await api<{ pendingFiles: number }>(
+                  `platform/companies/${deleting.id}`,
+                  {
+                    method: "DELETE",
+                    body: JSON.stringify({ companyCode: deleteCode }),
+                  },
+                );
+                setDeleting(null);
+                notify(
+                  result.pendingFiles
+                    ? "Company deleted. Some uploaded files are awaiting cleanup."
+                    : "Company and its data deleted.",
+                );
+                await client.invalidateQueries({ queryKey: ["platform"] });
+                await client.invalidateQueries({ queryKey: ["companies"] });
+              } catch (error) {
+                setDeleteError(
+                  error instanceof Error
+                    ? error.message
+                    : "Could not delete company.",
+                );
+              } finally {
+                setDeleteBusy(false);
+              }
+            }}
+          >
+            <p className="text-sm">
+              Company code: <strong>{deleting.code}</strong> · {deleting.users}{" "}
+              user accounts
+            </p>
+            {deleting.deletionBlockedReason ? (
+              <p className="error" role="alert">
+                {deleting.deletionBlockedReason}
+              </p>
+            ) : (
+              <label className="block">
+                Type <strong>{deleting.code}</strong> to confirm
+                <input
+                  autoComplete="off"
+                  value={deleteCode}
+                  disabled={deleteBusy}
+                  onChange={(event) => setDeleteCode(event.target.value)}
+                />
+              </label>
+            )}
+            {deleteError && (
+              <p className="error" role="alert">
+                {deleteError}
+              </p>
+            )}
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={deleteBusy}
+                onClick={() => setDeleting(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                variant="destructive"
+                disabled={
+                  deleteBusy ||
+                  !!deleting.deletionBlockedReason ||
+                  deleteCode !== deleting.code
+                }
+              >
+                {deleteBusy ? "Deleting…" : "Permanently delete company"}
+              </Button>
+            </div>
+          </form>
+        )}
+      </Dialog>
       <Dialog
         open={!!rights}
         onOpenChange={(v) => !v && setRights(null)}
