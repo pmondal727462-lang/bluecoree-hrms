@@ -17,3 +17,8 @@ mobile/node_modules/
 mobile/.expo/
 mobile/dist/
 .claude/settings.local.json
+
+.vercel
+.agents/skills/neon/
+.agents/skills/neon-postgres/
+skills-lock.json

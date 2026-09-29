@@ -35,7 +35,21 @@ For a fresh database, migrations install the catalogue; complete `/setup` to cre
 
 ## Separate worker and uploads
 
-Run `npm run worker` on a persistent worker host connected to the same database. Configure Redis when using multiple workers. Backups require PostgreSQL command-line tools, an encryption key, and persistent backup storage. Vercel deployment alone does not start this worker. Configure private S3-compatible uploads before accepting employee documents or photos; the local storage fallback cannot persist on Vercel.
+Run `npm run worker` on a persistent worker host connected to the same database. Configure Redis when using multiple workers. Backups require PostgreSQL command-line tools, an encryption key, and persistent backup storage. Vercel deployment alone does not start this worker. Configure private S3-compatible uploads or a private Vercel Blob store before accepting employee documents or photos; local-disk uploads are refused on Vercel.
+
+For Vercel Blob, connect a **private** store to production and configure `BLOB_READ_WRITE_TOKEN` (or the store's OIDC configuration). The app retains its expiring signed download links and fetches file content server-side; employee files never become public blobs. S3 takes precedence when both providers are configured. Server uploads remain subject to Vercel's request-size limits; large documents need a separate direct-upload implementation.
+
+## Temporary cloud environment
+
+The `bluecoree-billing/bluecoreehr` project uses a Neon Free database and private Blob storage in Singapore. Local `.env` remains connected to the original local database. Cloud credentials and operational files live in the ignored `.vercel/` directory, never Git. A verified encrypted snapshot was taken before migration. The local database is a point-in-time copy, not an automatically synchronized replica of future cloud changes.
+
+The temporary site is `https://bluecoreehr.vercel.app`. Its database health, tenant login, attendance APIs, logout and private signed-file downloads were verified after deployment. The initial migrated counts were 9 companies, 86 employees and 89 users.
+
+On the current workstation, `node .vercel/cloud-worker.cjs` runs the cloud worker using private settings and writes encrypted database backups to `data/cloud-backups`. It was started as a hidden process; it is not registered to restart automatically after a reboot. Do not run multiple copies without Redis. Worker logs are in `data/cloud-worker.log` and `data/cloud-worker-error.log`. Uploaded Blob objects require separate backup/export; database dumps do not contain those files.
+
+For local backups of the cloud database, run the backup command with a private environment file containing the **direct** cloud owner connection, original encryption keys, a separate `BACKUP_DIR`, and `PGSSLMODE=require`. Do not restore cloud backups over the original local database without a deliberate restore procedure. A local worker/backup process only operates while the computer and its internet connection are running.
+
+Hobby has usage and scheduling limits, and Vercel restricts it to personal, non-commercial use. Temporary deployment does not remove that restriction. SMTP, WhatsApp, face-provider and other external integrations still require their own configuration.
 
 ## Release verification
 

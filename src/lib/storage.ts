@@ -13,6 +13,11 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import {
+  put as putBlob,
+  get as getBlob,
+  del as deleteBlob,
+} from "@vercel/blob";
 import { AppError } from "./errors";
 
 // Private file storage. Local disk (outside the web root) in development;
@@ -25,6 +30,8 @@ const s3Configured = () =>
     process.env.STORAGE_ACCESS_KEY &&
     process.env.STORAGE_SECRET_KEY
   );
+const blobConfigured = () =>
+  !!(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID);
 let client: S3Client | null = null;
 function s3() {
   client ??= new S3Client({
@@ -49,7 +56,7 @@ function localPath(key: string) {
 }
 
 export function storageDriver() {
-  return s3Configured() ? "s3" : "local";
+  return s3Configured() ? "s3" : blobConfigured() ? "blob" : "local";
 }
 export async function putFile(
   companyId: string,
@@ -68,7 +75,15 @@ export async function putFile(
           process.env.STORAGE_SSE === "false" ? undefined : "AES256",
       }),
     );
-  else {
+  else if (blobConfigured()) {
+    await putBlob(key, bytes, {
+      access: "private",
+      addRandomSuffix: false,
+      contentType,
+    });
+  } else {
+    if (process.env.VERCEL)
+      throw new AppError(503, "Private file storage is not configured.");
     const file = localPath(key);
     await mkdir(path.dirname(file), { recursive: true });
     await writeFile(file, bytes, { mode: 0o600 });
@@ -76,6 +91,11 @@ export async function putFile(
   return { key, sha256: createHash("sha256").update(bytes).digest("hex") };
 }
 export async function readFileBytes(key: string) {
+  if (!s3Configured() && blobConfigured()) {
+    const result = await getBlob(key, { access: "private" });
+    if (result?.statusCode !== 200) throw new AppError(404, "File not found.");
+    return Buffer.from(await new Response(result.stream).arrayBuffer());
+  }
   if (!s3Configured()) return readFile(localPath(key));
   const res = await s3().send(
     new GetObjectCommand({ Bucket: process.env.STORAGE_BUCKET, Key: key }),
@@ -87,6 +107,7 @@ export async function deleteFile(key: string) {
     await s3().send(
       new DeleteObjectCommand({ Bucket: process.env.STORAGE_BUCKET, Key: key }),
     );
+  else if (blobConfigured()) await deleteBlob(key);
   else await rm(localPath(key), { force: true });
 }
 

@@ -9,7 +9,7 @@ import { createReadStream, createWriteStream } from "node:fs";
 import { mkdir, open, readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { PassThrough, Transform, type Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
+import { finished, pipeline } from "node:stream/promises";
 import { db, jobScope } from "@/lib/db";
 
 const magic = Buffer.from("HRMSBK1\n");
@@ -78,6 +78,17 @@ function run(
   let stderr = "";
   child.stderr.on("data", (d) => (stderr += d.toString().slice(0, 4000)));
   const done = new Promise<void>((resolve, reject) => {
+    // pg_restore --list can finish after reading the archive index, before
+    // stdin has consumed the full dump. Its exit status still determines success.
+    child.stdin.on("error", (error: NodeJS.ErrnoException) => {
+      if (
+        args.includes("--list") &&
+        (error.code === "EPIPE" || error.code === "EOF")
+      ) {
+        input?.unpipe(child.stdin);
+        input?.resume();
+      } else reject(error);
+    });
     child.on("error", reject);
     child.on("close", (code) =>
       code === 0
@@ -153,6 +164,7 @@ async function sha256(file: string) {
 }
 async function verify(file: string, key: Buffer) {
   const plain = await decryptFile(file, key);
+  const drained = finished(plain);
   const listing = run(tool("pg_restore"), ["--list"], process.env, plain);
   let entries = 0;
   listing.stdout.on("data", (d) => {
@@ -161,7 +173,7 @@ async function verify(file: string, key: Buffer) {
       .split("\n")
       .filter((l: string) => /^\d+;/.test(l)).length;
   });
-  await listing.done;
+  await Promise.all([listing.done, drained]);
   if (!entries) throw new Error("Backup contains no restorable entries.");
   return entries;
 }
