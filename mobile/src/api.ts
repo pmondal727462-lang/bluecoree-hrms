@@ -1,9 +1,10 @@
 import Constants from "expo-constants";
 import * as SecureStore from "expo-secure-store";
+import { stopLocalTracking } from "./tracking-control";
 
 // API client for the HRMS mobile endpoints (/api/v1). Tokens live in the
 // device keystore; an expired access token is refreshed once and retried.
-const base = `${(Constants.expoConfig?.extra?.apiUrl as string).replace(/\/$/, "")}/api`;
+const base = `${String(Constants.expoConfig?.extra?.apiUrl ?? "").replace(/\/$/, "")}/api`;
 const keys = { access: "hrms.access", refresh: "hrms.refresh" };
 
 export class ApiError extends Error {
@@ -15,14 +16,27 @@ export class ApiError extends Error {
     super(message);
   }
 }
-type Envelope<T> = { success: boolean; data?: T; message?: string; errorCode?: string };
+type Envelope<T> = {
+  success: boolean;
+  data?: T;
+  message?: string;
+  errorCode?: string;
+};
 
 let onSignedOut: () => void = () => {};
 export const setSignedOutHandler = (fn: () => void) => {
   onSignedOut = fn;
 };
 
+let refreshing: Promise<boolean> | null = null;
 async function refresh() {
+  if (!refreshing)
+    refreshing = refreshTokens().finally(() => {
+      refreshing = null;
+    });
+  return refreshing;
+}
+async function refreshTokens() {
   const refreshToken = await SecureStore.getItemAsync(keys.refresh);
   if (!refreshToken) return false;
   const res = await fetch(`${base}/v1/auth/refresh`, {
@@ -31,7 +45,10 @@ async function refresh() {
     body: JSON.stringify({ refreshToken }),
   });
   if (!res.ok) return false;
-  const body = (await res.json()) as Envelope<{ accessToken: string; refreshToken: string }>;
+  const body = (await res.json()) as Envelope<{
+    accessToken: string;
+    refreshToken: string;
+  }>;
   if (!body.data) return false;
   await SecureStore.setItemAsync(keys.access, body.data.accessToken);
   await SecureStore.setItemAsync(keys.refresh, body.data.refreshToken);
@@ -43,6 +60,11 @@ export async function api<T>(
   init: { method?: string; body?: unknown } = {},
   retried = false,
 ): Promise<T> {
+  if (!base.startsWith("http") || base.includes("hrms.example.com"))
+    throw new ApiError(
+      "Set EXPO_PUBLIC_API_URL to your BlueCoreeHR website and rebuild this app.",
+      503,
+    );
   const token = await SecureStore.getItemAsync(keys.access);
   const res = await fetch(`${base}/${path}`, {
     method: init.method ?? "GET",
@@ -62,7 +84,11 @@ export async function api<T>(
   }
   const body = (await res.json()) as Envelope<T>;
   if (!res.ok || !body.success)
-    throw new ApiError(body.message ?? "Something went wrong.", res.status, body.errorCode);
+    throw new ApiError(
+      body.message ?? "Something went wrong.",
+      res.status,
+      body.errorCode,
+    );
   return body.data as T;
 }
 
@@ -70,7 +96,9 @@ export async function api<T>(
 export async function authorizedDownload(path: string) {
   return {
     uri: `${base}/${path}`,
-    headers: { authorization: `Bearer ${(await SecureStore.getItemAsync(keys.access)) ?? ""}` },
+    headers: {
+      authorization: `Bearer ${(await SecureStore.getItemAsync(keys.access)) ?? ""}`,
+    },
   };
 }
 
@@ -78,19 +106,35 @@ export async function signIn(
   companyCode: string,
   identifier: string,
   password: string,
-  device: { deviceId: string; deviceName: string; platform: "android" | "ios"; appVersion: string },
+  device: {
+    deviceId: string;
+    deviceName: string;
+    platform: "android" | "ios";
+    appVersion: string;
+  },
   totp?: string,
 ) {
-  const data = await api<{ accessToken: string; refreshToken: string }>("v1/auth/login", {
-    method: "POST",
-    body: { companyCode, identifier, password, device, ...(totp ? { totp } : {}) },
-  });
+  const data = await api<{ accessToken: string; refreshToken: string }>(
+    "v1/auth/login",
+    {
+      method: "POST",
+      body: {
+        companyCode,
+        identifier,
+        password,
+        device,
+        ...(totp ? { totp } : {}),
+      },
+    },
+  );
   await SecureStore.setItemAsync(keys.access, data.accessToken);
   await SecureStore.setItemAsync(keys.refresh, data.refreshToken);
 }
 export async function signOut() {
+  await stopLocalTracking().catch(() => undefined);
   await SecureStore.deleteItemAsync(keys.access);
   await SecureStore.deleteItemAsync(keys.refresh);
   onSignedOut();
 }
-export const signedIn = async () => !!(await SecureStore.getItemAsync(keys.access));
+export const signedIn = async () =>
+  !!(await SecureStore.getItemAsync(keys.access));

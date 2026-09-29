@@ -15,6 +15,8 @@ export default async function Page({
   if (
     ![
       "dashboard",
+      "workforce",
+      "sites",
       "attendance",
       "leave",
       "time-settings",

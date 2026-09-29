@@ -16,6 +16,9 @@ export const planFeatures = [
   "attendance",
   "face",
   "livetracking",
+  "jobtracking",
+  "workplanning",
+  "contractors",
   "payroll",
   "ai",
   "mobile",
@@ -243,15 +246,17 @@ export async function enforceLimit(
   companyId: string,
   kind: "employees" | "admins" | "locations",
 ) {
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`limit:${companyId}`}))::text`;
   const sub = await assignedSubscription(companyId, tx);
   const limit =
     kind === "employees"
-      ? sub?.plan.employeeLimit
+      ? sub
+        ? employeeLicenceLimit(sub)
+        : null
       : kind === "admins"
         ? sub?.plan.adminLimit
         : sub?.plan.locationLimit;
   if (limit === null || limit === undefined) return;
-  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`limit:${companyId}`}))::text`;
   const used =
     kind === "employees"
       ? await tx.employee.count({
@@ -264,9 +269,18 @@ export async function enforceLimit(
   if (used > limit)
     throw new AppError(
       402,
-      `Your plan allows ${limit} ${kind === "employees" ? "active employees" : kind === "admins" ? "administrators" : "work locations"}. Upgrade the plan to add more.`,
+      `Your subscription allows ${limit} ${kind === "employees" ? "active employees" : kind === "admins" ? "administrators" : "work locations"}. Contact Management to increase your licence limit.`,
       "PLAN_LIMIT_REACHED",
     );
+}
+export function employeeLicenceLimit(sub: {
+  employeeLimit: number | null;
+  plan: { employeeLimit: number | null };
+}) {
+  const limits = [sub.employeeLimit, sub.plan.employeeLimit].filter(
+    (v): v is number => v !== null,
+  );
+  return limits.length ? Math.min(...limits) : null;
 }
 // Counts monthly metered use and refuses calls beyond the plan's quota.
 export async function consumeQuota(
@@ -310,7 +324,7 @@ function summary(
     endsAt: sub.endsAt,
     graceEndsAt: sub.graceEndsAt,
     limits: {
-      employees: p.employeeLimit,
+      employees: employeeLicenceLimit(sub),
       admins: p.adminLimit,
       storageMb: p.storageLimitMb,
       apiCalls: p.apiCallLimitMonthly,
@@ -422,6 +436,7 @@ const planSchema = z
 const subscriptionSchema = z
   .object({
     planCode: z.string().min(1),
+    employeeLimit: z.number().int().min(0).max(1000000).nullable().optional(),
     status: z.enum(["TRIAL", "ACTIVE", "PAST_DUE", "CANCELLED"]),
     trialEndsAt: z.iso.datetime({ offset: true }).nullable(),
     currentPeriodEnd: z.iso.datetime({ offset: true }).nullable(),
@@ -532,6 +547,8 @@ export async function platformSaas(
         enabledFeatures: sub?.enabledFeatures ?? [],
         disabledFeatures: sub?.disabledFeatures ?? [],
         employees: c._count.employees,
+        employeeLimit: sub?.employeeLimit ?? null,
+        effectiveEmployeeLimit: sub ? employeeLicenceLimit(sub) : null,
         users: c._count.users,
         companyStatus: c.status,
         suspendReason: c.suspendReason,
@@ -560,6 +577,7 @@ export async function platformSaas(
   if (resource === "subscriptions" && id && req.method === "PUT") {
     const b = subscriptionSchema.parse(await json(req));
     return db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`limit:${id}`}))::text`;
       const plan = await tx.subscriptionPlan.findUnique({
         where: { code: b.planCode },
       });
@@ -569,8 +587,22 @@ export async function platformSaas(
       const old = await tx.subscription.findUnique({
         where: { companyId: id },
       });
+      const employeeLimit =
+        b.employeeLimit === undefined
+          ? (old?.employeeLimit ?? null)
+          : b.employeeLimit;
+      const cap = employeeLicenceLimit({ employeeLimit, plan });
+      const used = await tx.employee.count({
+        where: { companyId: id, status: { not: "Inactive" } },
+      });
+      if (cap !== null && used > cap)
+        throw new AppError(
+          422,
+          `This client has ${used} active employees. Deactivate ${used - cap} employee(s) before setting a ${cap}-licence limit.`,
+        );
       const data = {
         planId: plan.id,
+        employeeLimit,
         status: b.status,
         trialEndsAt: b.trialEndsAt ? new Date(b.trialEndsAt) : null,
         currentPeriodEnd: b.currentPeriodEnd
@@ -596,7 +628,13 @@ export async function platformSaas(
         "UPDATE",
         "subscriptions",
         id,
-        old ? { planId: old.planId, status: old.status } : undefined,
+        old
+          ? {
+              planId: old.planId,
+              status: old.status,
+              employeeLimit: old.employeeLimit,
+            }
+          : undefined,
         { ...b, company: company.code },
         ip(req),
       );

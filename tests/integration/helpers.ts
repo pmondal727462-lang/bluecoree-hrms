@@ -140,6 +140,8 @@ export class Fixture {
         await tx.holiday.deleteMany({ where });
         await tx.employee.updateMany({ where, data: { managerId: null } });
         await tx.employee.deleteMany({ where });
+        await tx.workJob.deleteMany({ where });
+        await tx.workAgency.deleteMany({ where });
         await tx.shift.deleteMany({ where });
         await tx.session.deleteMany({ where: { user: where } });
         await tx.loginHistory.deleteMany({ where });

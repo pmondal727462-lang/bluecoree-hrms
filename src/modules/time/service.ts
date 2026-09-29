@@ -9,6 +9,7 @@ import { balances, employeeHolidays } from "./leave-balance";
 import { leaveAdminRoute } from "./leave-admin";
 import { Prisma } from "@prisma/client";
 import { NextRequest } from "next/server";
+import { finalizeWork } from "@/modules/workforce/attendance";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { AppError } from "@/lib/errors";
@@ -781,14 +782,23 @@ async function punch(req: NextRequest, ctx: Context, action: string) {
         fail(
           "This check-in is over 36 hours old. Submit a missed punch request or ask HR to correct it.",
         );
+      const breakMinutes = await finalizeWork(
+        tx,
+        ctx.companyId,
+        open.id,
+        open.checkIn,
+        now,
+        open.breakMinutes,
+      );
       saved = await tx.attendance.update({
         where: { id: open.id },
         data: {
           checkOut: now,
+          breakMinutes,
           ...completeDay({
             checkIn: open.checkIn,
             checkOut: now,
-            breakMinutes: open.breakMinutes,
+            breakMinutes,
             expectedMinutes: open.expectedMinutes,
             scheduledEnd: open.scheduledEnd,
             shift: await shiftForDate(tx, ctx.companyId, e, open.workDate),
@@ -1031,6 +1041,15 @@ async function fieldTracking(
     const b = fieldTrackingPointSchema.parse(await json(req));
     return mutate(ctx, async (tx) => {
       const e = await own(ctx, tx);
+      const p = await policy(tx, ctx.companyId);
+      if (!p.fieldTrackingEnabled || !e.fieldTrackingAllowed)
+        fail("Live tracking permission has been withdrawn.", 403);
+      if (
+        !(await tx.attendance.count({
+          where: { companyId: ctx.companyId, employeeId: e.id, checkOut: null },
+        }))
+      )
+        fail("Check in before sharing live location.", 409);
       const session = await tx.fieldTrackingSession.findFirst({
         where: {
           id: b.sessionId,
@@ -1351,15 +1370,26 @@ async function saveCorrection(
     fail(
       `Attendance already exists for ${e.employeeCode} on ${snapshot.workDate.toISOString().slice(0, 10)}.`,
     );
+  const actualBreakMinutes = old
+    ? await finalizeWork(
+        tx,
+        ctx.companyId,
+        old.id,
+        checkIn,
+        checkOut,
+        snapshot.breakMinutes,
+      )
+    : snapshot.breakMinutes;
   const data = {
     ...snapshot,
+    breakMinutes: actualBreakMinutes,
     checkIn,
     checkOut,
     offDay: plan.offDay,
     ...completeDay({
       checkIn,
       checkOut,
-      breakMinutes: snapshot.breakMinutes,
+      breakMinutes: actualBreakMinutes,
       expectedMinutes: snapshot.expectedMinutes,
       scheduledEnd: snapshot.scheduledEnd,
       shift: plan.shift,
@@ -1902,7 +1932,36 @@ async function reviewRegularization(
           ],
         },
       });
-      if (current)
+      if (current) {
+        // A rejected day earns no hours. Discard only unfinished timer duration,
+        // retaining completed activity as evidence and freeing the next workday.
+        const unfinished = await tx.workLog.findMany({
+          where: {
+            companyId: ctx.companyId,
+            attendanceId: current.id,
+            endedAt: null,
+          },
+        });
+        for (const log of unfinished)
+          await tx.workLog.update({
+            where: { id: log.id },
+            data: {
+              endedAt: log.startedAt,
+              note: `${log.note ?? ""}\nUnfinished timer discarded: attendance ${b.status.toLowerCase()}.`.trim(),
+            },
+          });
+        const breaks = await tx.attendanceBreak.findMany({
+          where: {
+            companyId: ctx.companyId,
+            attendanceId: current.id,
+            endedAt: null,
+          },
+        });
+        for (const pause of breaks)
+          await tx.attendanceBreak.update({
+            where: { id: pause.id },
+            data: { endedAt: pause.startedAt },
+          });
         attendanceId = (
           await tx.attendance.update({
             where: { id: current.id },
@@ -1921,6 +1980,7 @@ async function reviewRegularization(
             },
           })
         ).id;
+      }
     }
     const saved = await tx.attendanceRegularization.update({
       where: { id },
@@ -2529,6 +2589,7 @@ export async function timeRoute(
     id = path[2],
     method = req.method;
   if (path.length > 3) return fail("Endpoint not found.", 404);
+  if (resource === "rosters") await requireFeature(ctx.companyId, "workplanning");
   const leaveAdmin = await leaveAdminRoute(req, ctx, resource, id);
   if (leaveAdmin !== null) return leaveAdmin;
   if (!id && resource === "summary" && method === "GET") return summary(ctx);

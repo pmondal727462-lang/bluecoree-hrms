@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell, Megaphone, Plus } from "lucide-react";
 import { api } from "@/lib/api-client";
+import { moduleAllowed } from "@/lib/module-access";
 import type { Me } from "@/types/ui";
 import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
@@ -157,7 +158,10 @@ export function HomePage({ me, notify }: { me: Me; notify: Notify }) {
   const h = data.data;
   if (!h)
     return <div className="empty">{data.error?.message ?? "Loading…"}</div>;
-  const approvals = Object.entries(h.approvals).filter(([, n]) => n > 0);
+  const allowed = (path: string) => moduleAllowed(me.subscription, path);
+  const approvals = Object.entries(h.approvals).filter(
+    ([key, n]) => n > 0 && approvalLinks[key] && allowed(approvalLinks[key][1]),
+  );
   const tile = (label: string, value: React.ReactNode, href?: string) => (
     <div className="card stat" key={label}>
       <div className="stat-label">{label}</div>
@@ -170,7 +174,7 @@ export function HomePage({ me, notify }: { me: Me; notify: Notify }) {
     <>
       <Celebrations />
       {me.permissions.includes("company.write") && (
-        <SetupChecklist canDismiss />
+        <SetupChecklist canDismiss subscription={me.subscription} />
       )}
       <Heading
         eyebrow={h.today}
@@ -187,9 +191,14 @@ export function HomePage({ me, notify }: { me: Me; notify: Notify }) {
             : "Your account is not linked to an employee record."
         }
       />
-      {h.employee && <FaceAttendanceCard me={me} notify={notify} />}
+      {h.employee &&
+        allowed("attendance") &&
+        me.subscription?.plan.features.includes("face") && (
+          <FaceAttendanceCard me={me} notify={notify} />
+        )}
       <div className="stat-grid mb-6">
         {h.employee &&
+          allowed("attendance") &&
           tile(
             "Today",
             h.attendance
@@ -200,6 +209,7 @@ export function HomePage({ me, notify }: { me: Me; notify: Notify }) {
             "/attendance",
           )}
         {h.payslip &&
+          allowed("payslips") &&
           tile(
             "Latest payslip",
             money(h.payslip.netPay, h.payslip.currency),
@@ -214,6 +224,7 @@ export function HomePage({ me, notify }: { me: Me; notify: Notify }) {
             "/documents",
           )}
         {h.pendingSelfReviews !== null &&
+          allowed("performance") &&
           tile("Self reviews due", h.pendingSelfReviews, "/performance")}
         {tile("Unread notifications", h.unreadNotifications)}
       </div>
@@ -270,7 +281,7 @@ export function HomePage({ me, notify }: { me: Me; notify: Notify }) {
           </div>
         </section>
         <div className="space-y-6">
-          {h.leave && (
+          {h.leave && allowed("leave") && (
             <section className="card p-5">
               <h2 className="font-semibold mb-3">Leave balance</h2>
               {h.leave.map((l) => (
@@ -304,7 +315,7 @@ export function HomePage({ me, notify }: { me: Me; notify: Notify }) {
               <p className="muted text-sm">None scheduled.</p>
             )}
           </section>
-          {h.training && (
+          {h.training && allowed("training") && (
             <section className="card p-5">
               <h2 className="font-semibold mb-3">Training</h2>
               {h.training.upcoming.map((t) => (
@@ -330,7 +341,7 @@ export function HomePage({ me, notify }: { me: Me; notify: Notify }) {
               </Link>
             </section>
           )}
-          {h.expenses && !!h.expenses.length && (
+          {h.expenses && !!h.expenses.length && allowed("expenses") && (
             <section className="card p-5">
               <h2 className="font-semibold mb-3">Expense claims</h2>
               {h.expenses.map((e) => (

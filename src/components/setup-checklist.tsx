@@ -3,6 +3,8 @@ import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
 import { Button } from "./ui/button";
+import { moduleAllowed } from "@/lib/module-access";
+import type { Me } from "@/types/ui";
 
 type Progress = {
   steps: { key: string; title: string; done: boolean; href: string }[];
@@ -11,13 +13,26 @@ type Progress = {
 };
 
 // Guided setup for a new company; hidden once complete or dismissed.
-export function SetupChecklist({ canDismiss }: { canDismiss: boolean }) {
+export function SetupChecklist({
+  canDismiss,
+  subscription,
+}: {
+  canDismiss: boolean;
+  subscription: Me["subscription"];
+}) {
   const client = useQueryClient();
   const data = useQuery({
     queryKey: ["setup-progress"],
     queryFn: () => api<Progress>("setup-progress"),
   });
-  const p = data.data;
+  const source = data.data;
+  const steps =
+    source?.steps.filter((s) => moduleAllowed(subscription, s.href)) ?? [];
+  const p = source && {
+    ...source,
+    steps,
+    completed: steps.filter((s) => s.done).length,
+  };
   if (!p || p.dismissed || p.completed === p.steps.length) return null;
   return (
     <section className="card p-5 mb-6">

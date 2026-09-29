@@ -43,11 +43,19 @@ export type Field = {
   key: string;
   label: string;
   type?:
-    "text" | "email" | "date" | "number" | "select" | "textarea" | "password";
+    | "text"
+    | "email"
+    | "date"
+    | "datetime-local"
+    | "number"
+    | "select"
+    | "textarea"
+    | "password";
   required?: boolean;
   options?: { value: string; label: string }[];
   section?: string;
   maxLength?: number;
-  reference?: "employees" | "users" | "departments" | "designations" | "branches";
+  reference?:
+    "employees" | "users" | "departments" | "designations" | "branches";
   excludeId?: string;
 };

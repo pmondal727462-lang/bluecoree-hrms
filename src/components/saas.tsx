@@ -53,6 +53,9 @@ export const featureLabels: Record<string, string> = {
   onboarding: "Onboarding",
   face: "Face attendance",
   livetracking: "Live Tracking",
+  jobtracking: "Job-based time tracking",
+  workplanning: "Job scheduling & activity planning",
+  contractors: "Contractor & agency management",
   training: "Training",
   assets: "Assets",
 };

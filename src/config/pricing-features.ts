@@ -11,11 +11,11 @@ export const basicBenefits: PricingBenefit[] = [
   { label: "GPS Geofencing for location-based punches", feature: "attendance" },
   {
     label: "Mobile, Tablet & Auto Clock-in Options",
-    note: "Mobile and tablet supported; auto clock-in planned",
+    note: "Automatic face scanning while the attendance page is open; requires a configured verification provider",
     feature: "mobile",
   },
   { label: "Offline Time Capture", feature: "attendance" },
-  { label: "Job-based Time Tracking", planned: true, feature: "attendance" },
+  { label: "Job-based Time Tracking", feature: "jobtracking" },
   {
     label: "Spoof & Proxy Punch Detection",
     note: "Requires configured face verification and liveness provider",
@@ -29,19 +29,16 @@ export const basicBenefits: PricingBenefit[] = [
 export const advancedBenefits: PricingBenefit[] = [
   {
     label: "Shift & Job Scheduling",
-    note: "Shift scheduling supported; job scheduling planned",
-    feature: "attendance",
+    feature: "workplanning",
   },
   {
     label: "Activity Planning & Tracking",
-    planned: true,
-    feature: "attendance",
+    feature: "workplanning",
   },
   { label: "Overtime, Breaktime & Advanced Policies", feature: "attendance" },
   { label: "Advanced Reports & Insights", feature: "reports" },
   {
     label: "Contractor / Agency Management",
-    planned: true,
-    feature: "attendance",
+    feature: "contractors",
   },
 ];

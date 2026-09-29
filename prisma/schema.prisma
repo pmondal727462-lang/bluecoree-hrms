@@ -8,6 +8,12 @@ datasource db {
 }
 
 model Company {
+  workJobs                  WorkJob[]
+  workAssignments           WorkAssignment[]
+  workLogs                  WorkLog[]
+  agencies                  WorkAgency[]
+  workerContracts           WorkerContract[]
+  attendanceBreaks          AttendanceBreak[]
   celebrationWishes         CelebrationWish[]
   id                        String                     @id @default(cuid())
   code                      String                     @unique
@@ -322,6 +328,7 @@ model Designation {
 }
 
 model Branch {
+  workJobs        WorkJob[]
   id              String         @id @default(cuid())
   companyId       String
   name            String
@@ -340,6 +347,10 @@ model Branch {
 }
 
 model Employee {
+  workAssignments           WorkAssignment[]
+  workLogs                  WorkLog[]
+  workerContracts           WorkerContract[]
+  attendanceBreaks          AttendanceBreak[]
   celebrationWishes         CelebrationWish[]
   id                        String                     @id @default(cuid())
   companyId                 String
@@ -673,6 +684,8 @@ model Shift {
 }
 
 model Attendance {
+  breaks                  AttendanceBreak[]
+  workLogs                WorkLog[]
   id                      String                     @id @default(cuid())
   companyId               String
   employeeId              String
@@ -1122,6 +1135,7 @@ model Subscription {
   graceDays             Int              @default(7)
   cancelledAt           DateTime?
   notes                 String?
+  employeeLimit         Int?
   enabledFeatures       String[]         @default([])
   disabledFeatures      String[]         @default([])
   createdAt             DateTime         @default(now())
@@ -1919,26 +1933,26 @@ model NotificationTemplate {
 // Every in/out punch, including repeat punches on one work date and device
 // pushes. The day's attendance row is derived from these.
 model AttendancePunch {
-  id           String      @id @default(cuid())
-  companyId    String
-  employeeId   String
-  attendanceId String?
-  punchedAt    DateTime
-  direction    String
-  source       String      @default("Web")
-  deviceId     String?
-  location     Json?
-  ip           String?
-  clientEventId String?
+  id                String      @id @default(cuid())
+  companyId         String
+  employeeId        String
+  attendanceId      String?
+  punchedAt         DateTime
+  direction         String
+  source            String      @default("Web")
+  deviceId          String?
+  location          Json?
+  ip                String?
+  clientEventId     String?
   clientPayloadHash String?
-  createdAt    DateTime    @default(now())
-  company      Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  employee     Employee    @relation(fields: [employeeId, companyId], references: [id, companyId], onDelete: Cascade)
-  attendance   Attendance? @relation(fields: [attendanceId, companyId], references: [id, companyId], onDelete: NoAction)
+  createdAt         DateTime    @default(now())
+  company           Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee          Employee    @relation(fields: [employeeId, companyId], references: [id, companyId], onDelete: Cascade)
+  attendance        Attendance? @relation(fields: [attendanceId, companyId], references: [id, companyId], onDelete: NoAction)
 
+  @@unique([companyId, employeeId, clientEventId])
   @@index([companyId, employeeId, punchedAt])
   @@index([attendanceId])
-  @@unique([companyId, employeeId, clientEventId])
   @@map("attendance_punches")
 }
 
@@ -2705,4 +2719,116 @@ model RetentionRun {
 
   @@index([companyId, createdAt])
   @@map("retention_runs")
+}
+
+model WorkAgency {
+  id          String           @id @default(cuid())
+  companyId   String
+  name        String
+  contactName String?
+  email       String?
+  phone       String?
+  active      Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  company     Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contracts   WorkerContract[]
+
+  @@unique([id, companyId])
+  @@unique([companyId, name])
+  @@map("work_agencies")
+}
+
+model WorkerContract {
+  id         String     @id @default(cuid())
+  companyId  String
+  employeeId String
+  agencyId   String
+  startsOn   DateTime   @db.Date
+  endsOn     DateTime   @db.Date
+  status     String     @default("ACTIVE")
+  reference  String?
+  notes      String?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  company    Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee   Employee   @relation(fields: [employeeId, companyId], references: [id, companyId], onDelete: Cascade)
+  agency     WorkAgency @relation(fields: [agencyId, companyId], references: [id, companyId], onDelete: NoAction)
+
+  @@index([companyId, employeeId, startsOn])
+  @@map("worker_contracts")
+}
+
+model WorkJob {
+  id          String           @id @default(cuid())
+  companyId   String
+  code        String
+  name        String
+  description String?
+  branchId    String?
+  status      String           @default("ACTIVE")
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  company     Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  branch      Branch?          @relation(fields: [branchId, companyId], references: [id, companyId], onDelete: NoAction)
+  assignments WorkAssignment[]
+  logs        WorkLog[]
+
+  @@unique([id, companyId])
+  @@unique([companyId, code])
+  @@map("work_jobs")
+}
+
+model WorkAssignment {
+  id         String   @id @default(cuid())
+  companyId  String
+  jobId      String
+  employeeId String
+  title      String
+  startsAt   DateTime
+  endsAt     DateTime
+  status     String   @default("PLANNED")
+  progress   Int      @default(0)
+  note       String?
+  updatedAt  DateTime @updatedAt
+  createdAt  DateTime @default(now())
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  job        WorkJob  @relation(fields: [jobId, companyId], references: [id, companyId], onDelete: NoAction)
+  employee   Employee @relation(fields: [employeeId, companyId], references: [id, companyId], onDelete: Cascade)
+
+  @@index([companyId, employeeId, startsAt])
+  @@map("work_assignments")
+}
+
+model WorkLog {
+  id           String     @id @default(cuid())
+  companyId    String
+  jobId        String
+  employeeId   String
+  attendanceId String
+  startedAt    DateTime   @default(now())
+  endedAt      DateTime?
+  note         String?
+  company      Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  job          WorkJob    @relation(fields: [jobId, companyId], references: [id, companyId], onDelete: NoAction)
+  employee     Employee   @relation(fields: [employeeId, companyId], references: [id, companyId], onDelete: Cascade)
+  attendance   Attendance @relation(fields: [attendanceId, companyId], references: [id, companyId], onDelete: Cascade)
+
+  @@index([companyId, employeeId, startedAt])
+  @@map("work_logs")
+}
+
+model AttendanceBreak {
+  id           String     @id @default(cuid())
+  companyId    String
+  employeeId   String
+  attendanceId String
+  startedAt    DateTime   @default(now())
+  endedAt      DateTime?
+  company      Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee     Employee   @relation(fields: [employeeId, companyId], references: [id, companyId], onDelete: Cascade)
+  attendance   Attendance @relation(fields: [attendanceId, companyId], references: [id, companyId], onDelete: Cascade)
+
+  @@index([companyId, employeeId, startedAt])
+  @@map("attendance_breaks")
 }

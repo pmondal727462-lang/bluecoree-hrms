@@ -3,6 +3,8 @@ import { Text, View } from "react-native";
 import * as Location from "expo-location";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { api } from "@/api";
+import { stopNativeTracking } from "@/background-tracking";
+import { TrackingPanel } from "@/tracking-panel";
 import { Button, Card, Empty, Message, Row, Screen, s, useApi } from "@/ui";
 
 type Punch = { checkIn: string; checkOut: string | null; status: string } | null;
@@ -35,11 +37,12 @@ export default function Attendance() {
   const punch = async (action: "check-in" | "check-out" | "face-punch", faceSample?: string) => {
     setMsg({ text: "" });
     try {
-      await api(`v1/attendance/${action}`, {
+      const saved = await api<Punch>(`v1/attendance/${action}`, {
         method: "POST",
         body: { location: await location(), ...(faceSample ? { faceSample } : {}) },
       });
       setMsg({ text: "Attendance recorded." });
+      if (action === "check-out" || saved?.checkOut) await stopNativeTracking().catch(() => undefined);
       setCamera(false);
       await Promise.all([summary.reload(), days.reload()]);
     } catch (e) {
@@ -85,6 +88,7 @@ export default function Attendance() {
           Your location is sent with each punch when your company uses geofences.
         </Text>
       </Card>
+      <TrackingPanel checkedIn={checkedIn} />
       <Card title="This month">
         {days.data?.items.length ? (
           days.data.items.map((d) => (

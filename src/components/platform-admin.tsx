@@ -54,6 +54,8 @@ type CompanyRow = {
   disabledFeatures: string[];
   employees: number;
   users: number;
+  employeeLimit: number | null;
+  effectiveEmployeeLimit: number | null;
   activeUsers30d: number;
   apiCalls: number;
   aiRequests: number;
@@ -288,7 +290,7 @@ function Companies({
           "Plan",
           "Status",
           "Ends",
-          "Active employees",
+          "Employees / licence limit",
           ...(subscriptions
             ? [
                 "Annual price / employee",
@@ -319,7 +321,7 @@ function Companies({
             )}
           </div>,
           when(c.storedStatus === "TRIAL" ? c.trialEndsAt : c.currentPeriodEnd),
-          c.employees,
+          `${c.employees} / ${c.effectiveEmployeeLimit ?? "Plan has no cap"}`,
           ...(subscriptions
             ? (() => {
                 const p = plans.data?.find((p) => p.code === c.planCode);
@@ -483,6 +485,7 @@ function Companies({
           <RecordForm
             initial={{
               planCode: edit.planCode,
+              employeeLimit: edit.employeeLimit,
               status: edit.storedStatus,
               trialEndsAt: edit.trialEndsAt?.slice(0, 10),
               currentPeriodEnd: edit.currentPeriodEnd?.slice(0, 10),
@@ -511,6 +514,11 @@ function Companies({
               },
               { key: "trialEndsAt", label: "Trial ends", type: "date" },
               {
+                key: "employeeLimit",
+                label: "Employee licence limit (e.g. 50; blank = plan limit)",
+                type: "number",
+              },
+              {
                 key: "currentPeriodEnd",
                 label: "Current period ends (blank = no end)",
                 type: "date",
@@ -533,6 +541,7 @@ function Companies({
                 method: "PUT",
                 body: JSON.stringify({
                   planCode: v.planCode,
+                  employeeLimit: num(v.employeeLimit),
                   status: v.status,
                   trialEndsAt: isoOrNull(v.trialEndsAt),
                   currentPeriodEnd: isoOrNull(v.currentPeriodEnd),

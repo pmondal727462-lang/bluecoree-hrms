@@ -304,6 +304,13 @@ export function Directory({
           }))
         : []),
     ];
+  fields = fields.filter((field) =>
+    field.key === "fieldTrackingAllowed"
+      ? me.subscription?.plan.features.includes("livetracking")
+      : field.key === "faceRequired"
+        ? me.subscription?.plan.features.includes("face")
+        : true,
+  );
   function initial() {
     const base: Record<string, unknown> = editing
       ? { ...editing }
@@ -342,8 +349,10 @@ export function Directory({
       if (!values.mobile) body.mobile = null;
     }
     if (module === "employees") {
-      body.fieldTrackingAllowed = values.fieldTrackingAllowed === "true";
-      body.faceRequired = values.faceRequired === "true";
+      if ("fieldTrackingAllowed" in values)
+        body.fieldTrackingAllowed = values.fieldTrackingAllowed === "true";
+      if ("faceRequired" in values)
+        body.faceRequired = values.faceRequired === "true";
       for (const group of ["address", "emergencyContact", "sensitive"]) {
         const entries = Object.entries(values).filter(([key]) =>
           key.startsWith(`${group}_`),

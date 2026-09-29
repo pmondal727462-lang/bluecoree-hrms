@@ -477,6 +477,23 @@ describe("Phase 2 attendance and leave", () => {
       location: { latitude: 12.001, longitude: 77.001, accuracy: 12 },
     });
     expect(point.status).toBe(200);
+    await db.employee.update({
+      where: { id: employeeId },
+      data: { fieldTrackingAllowed: false },
+    });
+    expect(
+      (
+        await call("time/field-tracking/location", "POST", staff, {
+          sessionId: started.body.data.id,
+          deviceId: device,
+          location: { latitude: 12.001, longitude: 77.001, accuracy: 12 },
+        })
+      ).status,
+    ).toBe(403);
+    await db.employee.update({
+      where: { id: employeeId },
+      data: { fieldTrackingAllowed: true },
+    });
     expect(
       (
         await call("time/field-tracking/location", "POST", staff, {

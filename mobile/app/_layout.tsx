@@ -1,3 +1,4 @@
+import "@/background-tracking";
 import { useEffect, useState } from "react";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as Notifications from "expo-notifications";

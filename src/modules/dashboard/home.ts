@@ -5,11 +5,18 @@ import { balances } from "@/modules/time/service";
 import { visibleAnnouncements } from "@/modules/announcements/service";
 import { directReportIds } from "@/modules/shared/team";
 import { myTraining } from "@/modules/training/service";
+import { entitlements } from "@/modules/saas/service";
+import { permissionFeature } from "@/lib/module-access";
 
 // Employee self-service home: each block appears only when the user's
 // permissions allow it.
 export async function home(ctx: Context) {
-  const has = (p: string) => ctx.permissions.includes(p);
+  const access = await entitlements(ctx.companyId);
+  const has = (p: string) =>
+    ctx.permissions.includes(p) &&
+    (!permissionFeature(p) ||
+      (access.sub.status !== "EXPIRED" &&
+        access.features.has(permissionFeature(p)!)));
   const company = await db.company.findUniqueOrThrow({
     where: { id: ctx.companyId },
   });

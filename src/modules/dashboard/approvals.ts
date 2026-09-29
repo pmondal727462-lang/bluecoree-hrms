@@ -1,17 +1,24 @@
 import { db } from "@/lib/db";
 import type { Context } from "@/modules/auth/service";
 import { directReportIds } from "@/modules/shared/team";
+import { entitlements } from "@/modules/saas/service";
+import { permissionFeature } from "@/lib/module-access";
 
 // Leave requests and expense claims this user can decide now, for the mobile
 // approvals screen. Other workflows are counted on the home dashboard.
 export async function pendingApprovals(ctx: Context) {
-  const has = (p: string) => ctx.permissions.includes(p);
+  const access = await entitlements(ctx.companyId);
+  const allowed = (feature: string) =>
+    access.sub.status !== "EXPIRED" && access.features.has(feature);
+  const has = (p: string) =>
+    ctx.permissions.includes(p) &&
+    (!permissionFeature(p) || allowed(permissionFeature(p)!));
   const team = await directReportIds(ctx);
   const person = {
     select: { id: true, employeeCode: true, firstName: true, lastName: true },
   };
   const [leave, expenses] = await Promise.all([
-    has("timeoff.manage") || team.length
+    allowed("attendance") && (has("timeoff.manage") || team.length)
       ? db.leaveRequest.findMany({
           where: {
             companyId: ctx.companyId,

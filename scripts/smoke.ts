@@ -16,6 +16,8 @@ async function main() {
     "/attendance",
     "/leave",
     "/time-settings",
+    "/workforce",
+    "/sites",
   ]) {
     const r = await fetch(base + path);
     assert.equal(r.status, 200, `${path} status`);
@@ -55,6 +57,10 @@ async function main() {
     "/api/time/roster",
     "/api/time/leave?scope=company",
     "/api/time/balances",
+    "/api/workforce/jobs",
+    "/api/workforce/logs",
+    "/api/workforce/assignments",
+    "/api/workforce/sites",
   ]) {
     const r = await fetch(base + path, { headers: { cookie: cookies } });
     assert.equal(r.status, 200, path);

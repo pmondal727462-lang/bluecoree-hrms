@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "BlueCoree HR",
+    "name": "BlueCoreeHR",
     "slug": "bluecoree-hr",
     "scheme": "bluecoreehr",
     "version": "1.0.0",
@@ -12,7 +12,11 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Your location is recorded with attendance check-in and check-out when your company requires it."
+          "locationWhenInUsePermission": "Your location is recorded with attendance check-in and check-out when your company requires it.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true,
+          "locationAlwaysAndWhenInUsePermission": "Share work location with your company during a tracking session you explicitly start. Stop sharing from Attendance."
         }
       ],
       [
@@ -23,11 +27,16 @@
       ],
       "expo-notifications"
     ],
-    "ios": { "bundleIdentifier": "com.bluecoree.hr", "supportsTablet": false },
+    "ios": {
+      "bundleIdentifier": "com.bluecoree.hr",
+      "supportsTablet": true
+    },
     "android": {
       "package": "com.bluecoree.hr",
       "permissions": ["ACCESS_FINE_LOCATION", "CAMERA", "POST_NOTIFICATIONS"]
     },
-    "extra": { "apiUrl": "https://hrms.example.com" }
+    "extra": {
+      "apiUrl": "https://hrms.example.com"
+    }
   }
 }

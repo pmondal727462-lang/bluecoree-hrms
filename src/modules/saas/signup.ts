@@ -18,6 +18,8 @@ import {
 } from "@/modules/auth/service";
 import { password } from "@/modules/shared/validators";
 import { product } from "@/config/product";
+import { entitlements } from "./service";
+import { moduleAllowed } from "@/lib/module-access";
 
 const signupSchema = z
   .object({
@@ -222,6 +224,11 @@ export async function contactRoute(req: NextRequest) {
 // Guided company setup after signup: each step is derived from real data.
 export async function setupProgress(ctx: Context) {
   requirePermission(ctx, "company.read");
+  const access = await entitlements(ctx.companyId);
+  const subscription = {
+    status: access.sub.status,
+    plan: { features: [...access.features] },
+  };
   const where = { companyId: ctx.companyId };
   const [
     company,
@@ -270,7 +277,9 @@ export async function setupProgress(ctx: Context) {
       "/time-settings",
     ],
     ["payroll", "Review statutory payroll settings", statutory > 0, "/payroll"],
-  ].map(([key, title, done, href]) => ({ key, title, done, href }));
+  ]
+    .map(([key, title, done, href]) => ({ key, title, done, href }))
+    .filter((step) => moduleAllowed(subscription, String(step.href)));
   return {
     steps,
     completed: steps.filter((s) => s.done).length,

@@ -43,6 +43,7 @@ import {
 } from "@/modules/auth/account";
 import { emailConfigured } from "@/integrations/email";
 import { timeRoute } from "@/modules/time/service";
+import { workforceRoute } from "@/modules/workforce/service";
 import { aiRoute } from "@/modules/ai/service";
 import { payrollRoute } from "@/modules/payroll/service";
 import { payrollAdmin } from "@/modules/payroll/runs";
@@ -255,6 +256,7 @@ async function route(
         await consumeQuota(ctx.companyId, "ai_requests");
       if (route === "subscription")
         return ok(await subscriptionRoute(req, ctx));
+      if (path[0] === "workforce") return ok(await workforceRoute(req, ctx, path));
       if (route === "setup-progress" && method === "GET")
         return ok(await setupProgress(ctx));
       if (route === "setup-progress/dismiss" && method === "POST")

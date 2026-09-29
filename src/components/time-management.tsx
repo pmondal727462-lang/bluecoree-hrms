@@ -12,6 +12,7 @@ import {
   type AttendanceLocation,
 } from "./attendance-location";
 import { FieldTracking } from "./field-tracking";
+import { BreakControls } from "./workforce";
 import { AutoFaceScan } from "./auto-face-scan";
 import { BiometricDevices } from "./biometric-devices";
 import { FaceAdmin } from "./face-admin";
@@ -1094,7 +1095,11 @@ function Rosters({
   );
 }
 
-export function AttendancePage({ me, notify, onAskReport }: Props & { onAskReport?: () => void }) {
+export function AttendancePage({
+  me,
+  notify,
+  onAskReport,
+}: Props & { onAskReport?: () => void }) {
   const client = useQueryClient(),
     summary = useSummary();
   const canRead = me.permissions.includes("attendance.read"),
@@ -1185,9 +1190,11 @@ export function AttendancePage({ me, notify, onAskReport }: Props & { onAskRepor
         </div>
         {canManage && (
           <div className="flex gap-2 flex-wrap">
-            <Button variant="outline" onClick={() => setImporting(true)}>
-              Import device CSV
-            </Button>
+            {me.subscription?.plan.features.includes("biometric") && (
+              <Button variant="outline" onClick={() => setImporting(true)}>
+                Import device CSV
+              </Button>
+            )}
             <Button
               onClick={() => {
                 setView("manual");
@@ -1266,6 +1273,7 @@ export function AttendancePage({ me, notify, onAskReport }: Props & { onAskRepor
           </Button>
         </section>
       )}
+      {canSelf && s.employee && <BreakControls />}
       <FieldTracking
         me={me}
         enabled={
@@ -1285,7 +1293,9 @@ export function AttendancePage({ me, notify, onAskReport }: Props & { onAskRepor
           ...(canSelf ? [["own", "My records"]] : []),
           ...(canSelf || canManage ? [["requests", "Missed punches"]] : []),
           ...(canManage ? [["manual", "Manual attendance"]] : []),
-          ...(canRead ? [["rosters", "Rosters"]] : []),
+          ...(canRead && me.subscription?.plan.features.includes("workplanning")
+            ? [["rosters", "Rosters"]]
+            : []),
           ...(canRead && me.subscription?.plan.features.includes("biometric")
             ? [["devices", "Devices"]]
             : []),
@@ -2195,6 +2205,8 @@ export function LeavePage({ me, notify }: Props) {
 }
 
 export function TimeSettings({ me, notify }: Props) {
+  const hasFeature = (feature: string) =>
+    !!me.subscription?.plan.features.includes(feature);
   const summary = useSummary(),
     client = useQueryClient();
   const [editor, setEditor] = useState<{
@@ -2251,27 +2263,39 @@ export function TimeSettings({ me, notify }: Props) {
                 method: "PUT",
                 body: JSON.stringify({
                   gpsTrackingEnabled: f.get("gpsTrackingEnabled") === "on",
-                  fieldTrackingEnabled: f.get("fieldTrackingEnabled") === "on",
-                  fieldTrackingIntervalSeconds: Number(
-                    f.get("fieldTrackingIntervalSeconds"),
-                  ),
-                  fieldTrackingMaxMinutes: Number(
-                    f.get("fieldTrackingMaxMinutes"),
-                  ),
-                  faceAttendanceEnabled:
-                    f.get("faceAttendanceEnabled") === "on",
+                  ...(hasFeature("livetracking")
+                    ? {
+                        fieldTrackingEnabled:
+                          f.get("fieldTrackingEnabled") === "on",
+                        fieldTrackingIntervalSeconds: Number(
+                          f.get("fieldTrackingIntervalSeconds"),
+                        ),
+                        fieldTrackingMaxMinutes: Number(
+                          f.get("fieldTrackingMaxMinutes"),
+                        ),
+                      }
+                    : {}),
                   overtimeRequiresApproval:
                     f.get("overtimeRequiresApproval") === "on",
                   singlePunchStatus: f.get("singlePunchStatus"),
-                  faceLivenessRequired: f.get("faceLivenessRequired") === "on",
-                  faceConfidenceThreshold: Number(
-                    f.get("faceConfidenceThreshold"),
-                  ),
-                  faceMaxFailedAttempts: Number(
-                    f.get("faceMaxFailedAttempts") || 5,
-                  ),
-                  faceLockoutMinutes: Number(f.get("faceLockoutMinutes") || 15),
-                  faceFallback: f.get("faceFallback"),
+                  ...(hasFeature("face")
+                    ? {
+                        faceAttendanceEnabled:
+                          f.get("faceAttendanceEnabled") === "on",
+                        faceLivenessRequired:
+                          f.get("faceLivenessRequired") === "on",
+                        faceConfidenceThreshold: Number(
+                          f.get("faceConfidenceThreshold"),
+                        ),
+                        faceMaxFailedAttempts: Number(
+                          f.get("faceMaxFailedAttempts") || 5,
+                        ),
+                        faceLockoutMinutes: Number(
+                          f.get("faceLockoutMinutes") || 15,
+                        ),
+                        faceFallback: f.get("faceFallback"),
+                      }
+                    : {}),
                   compOffEnabled: f.get("compOffEnabled") === "on",
                   compOffExpiryDays: Number(f.get("compOffExpiryDays") || 90),
                   optionalHolidayLimit: Number(
@@ -2319,43 +2343,47 @@ export function TimeSettings({ me, notify }: Props) {
               staff outside an office boundary. Location-specific attendance
               boundaries still apply where configured.
             </p>
-            <label className="flex items-center gap-2 mt-4">
-              <input
-                name="fieldTrackingEnabled"
-                type="checkbox"
-                defaultChecked={s.policy.fieldTrackingEnabled}
-              />
-              Allow consent-based live field tracking
-            </label>
-            <p className="muted text-sm">
-              Employees must be checked in and explicitly start a session. GPS
-              points are collected only during the active session and expire
-              automatically.
-            </p>
-            <div className="form-grid">
-              <label>
-                Update interval (seconds)
-                <input
-                  name="fieldTrackingIntervalSeconds"
-                  type="number"
-                  min="15"
-                  max="300"
-                  required
-                  defaultValue={s.policy.fieldTrackingIntervalSeconds}
-                />
-              </label>
-              <label>
-                Maximum session (minutes)
-                <input
-                  name="fieldTrackingMaxMinutes"
-                  type="number"
-                  min="15"
-                  max="1440"
-                  required
-                  defaultValue={s.policy.fieldTrackingMaxMinutes}
-                />
-              </label>
-            </div>
+            {hasFeature("livetracking") && (
+              <>
+                <label className="flex items-center gap-2 mt-4">
+                  <input
+                    name="fieldTrackingEnabled"
+                    type="checkbox"
+                    defaultChecked={s.policy.fieldTrackingEnabled}
+                  />
+                  Allow consent-based live field tracking
+                </label>
+                <p className="muted text-sm">
+                  Employees must be checked in and explicitly start a session.
+                  GPS points are collected only during the active session and
+                  expire automatically.
+                </p>
+                <div className="form-grid">
+                  <label>
+                    Update interval (seconds)
+                    <input
+                      name="fieldTrackingIntervalSeconds"
+                      type="number"
+                      min="15"
+                      max="300"
+                      required
+                      defaultValue={s.policy.fieldTrackingIntervalSeconds}
+                    />
+                  </label>
+                  <label>
+                    Maximum session (minutes)
+                    <input
+                      name="fieldTrackingMaxMinutes"
+                      type="number"
+                      min="15"
+                      max="1440"
+                      required
+                      defaultValue={s.policy.fieldTrackingMaxMinutes}
+                    />
+                  </label>
+                </div>
+              </>
+            )}
             <label className="flex items-center gap-2 mt-4">
               <input
                 name="overtimeRequiresApproval"
@@ -2364,69 +2392,73 @@ export function TimeSettings({ me, notify }: Props) {
               />
               Overtime needs HR approval before it counts
             </label>
-            <label className="flex items-center gap-2">
-              <input
-                name="faceAttendanceEnabled"
-                type="checkbox"
-                defaultChecked={s.policy.faceAttendanceEnabled}
-              />
-              Require face registration and matching for all employees
-            </label>
-            <label className="flex items-center gap-2">
-              <input
-                name="faceLivenessRequired"
-                type="checkbox"
-                checked
-                readOnly
-              />
-              Require liveness verification
-            </label>
-            <label>
-              Minimum face confidence (0.5–0.99)
-              <input
-                name="faceConfidenceThreshold"
-                type="number"
-                min="0.5"
-                max="0.99"
-                step="0.01"
-                required
-                defaultValue={s.policy.faceConfidenceThreshold}
-              />
-            </label>
-            <label>
-              Failed face scans before lockout
-              <input
-                name="faceMaxFailedAttempts"
-                type="number"
-                min="1"
-                max="20"
-                defaultValue={s.faceRules?.maxFailed ?? 5}
-              />
-            </label>
-            <label>
-              Lockout minutes
-              <input
-                name="faceLockoutMinutes"
-                type="number"
-                min="1"
-                max="1440"
-                defaultValue={s.faceRules?.lockoutMinutes ?? 15}
-              />
-            </label>
-            <label>
-              When face cannot be used
-              <select
-                name="faceFallback"
-                defaultValue={s.faceRules?.fallback ?? "NONE"}
-              >
-                <option value="NONE">
-                  Face required (missed punch request or HR entry)
-                </option>
-                <option value="WEB">
-                  Allow web/GPS attendance, labelled face fallback
-                </option>
-              </select>
-            </label>
+            {hasFeature("face") && (
+              <>
+                <label className="flex items-center gap-2">
+                  <input
+                    name="faceAttendanceEnabled"
+                    type="checkbox"
+                    defaultChecked={s.policy.faceAttendanceEnabled}
+                  />
+                  Require face registration and matching for all employees
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    name="faceLivenessRequired"
+                    type="checkbox"
+                    checked
+                    readOnly
+                  />
+                  Require liveness verification
+                </label>
+                <label>
+                  Minimum face confidence (0.5–0.99)
+                  <input
+                    name="faceConfidenceThreshold"
+                    type="number"
+                    min="0.5"
+                    max="0.99"
+                    step="0.01"
+                    required
+                    defaultValue={s.policy.faceConfidenceThreshold}
+                  />
+                </label>
+                <label>
+                  Failed face scans before lockout
+                  <input
+                    name="faceMaxFailedAttempts"
+                    type="number"
+                    min="1"
+                    max="20"
+                    defaultValue={s.faceRules?.maxFailed ?? 5}
+                  />
+                </label>
+                <label>
+                  Lockout minutes
+                  <input
+                    name="faceLockoutMinutes"
+                    type="number"
+                    min="1"
+                    max="1440"
+                    defaultValue={s.faceRules?.lockoutMinutes ?? 15}
+                  />
+                </label>
+                <label>
+                  When face cannot be used
+                  <select
+                    name="faceFallback"
+                    defaultValue={s.faceRules?.fallback ?? "NONE"}
+                  >
+                    <option value="NONE">
+                      Face required (missed punch request or HR entry)
+                    </option>
+                    <option value="WEB">
+                      Allow web/GPS attendance, labelled face fallback
+                    </option>
+                  </select>
+                </label>
+              </>
+            )}
             <label className="flex items-center gap-2">
               <input
                 name="enabled"

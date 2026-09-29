@@ -41,6 +41,7 @@ import {
   UserPlus,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
+import { moduleAllowed } from "@/lib/module-access";
 import type { Me } from "@/types/ui";
 import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
@@ -56,6 +57,7 @@ import { TrainingPage } from "./training";
 import { AssetsPage } from "./assets";
 import { PerformancePage } from "./performance";
 import { ReportsPage } from "./reports";
+import { WorkforcePage, SiteDashboard } from "./workforce";
 import { LifecyclePage } from "./lifecycle";
 import { HomePage, NotificationBell } from "./home";
 import { DocumentsPage } from "./documents";
@@ -73,6 +75,18 @@ import { DevicesPage } from "./platform";
 import { IntegrationsPage } from "./integrations";
 import { SecurityPage, SecuritySetupRequired } from "./security";
 const nav = [
+  {
+    key: "workforce",
+    label: "Jobs & activities",
+    icon: Briefcase,
+    permission: "attendance.self",
+  },
+  {
+    key: "sites",
+    label: "Multi-site dashboard",
+    icon: Building2,
+    permission: "attendance.read",
+  },
   { key: "home", label: "Home", icon: HomeIcon, permission: "" },
   {
     key: "documents",
@@ -240,23 +254,6 @@ const nav = [
   { key: "sessions", label: "My sessions", icon: Monitor, permission: "" },
 ];
 // Modules hidden when the company's plan does not include them.
-const navFeature: Record<string, string> = {
-  "hr-copilot": "ai",
-  attendance: "attendance",
-  leave: "attendance",
-  "time-settings": "attendance",
-  payslips: "payroll",
-  payroll: "payroll",
-  expenses: "expenses",
-  recruitment: "recruitment",
-  performance: "performance",
-  training: "training",
-  assets: "assets",
-  reports: "reports",
-  onboarding: "onboarding",
-  integrations: "api",
-  dashboard: "reports",
-};
 export function Workspace({ module }: { module: string }) {
   const [askOpen, setAskOpen] = useState(false);
   const [askReport, setAskReport] = useState(false);
@@ -272,6 +269,7 @@ export function Workspace({ module }: { module: string }) {
     [toast, setToast] = useState("");
   const { data: me, error } = useQuery({
     queryKey: ["me"],
+    refetchInterval: 60000,
     queryFn: async () => {
       try {
         return await api<Me>("auth/me", {}, false);
@@ -357,15 +355,14 @@ export function Workspace({ module }: { module: string }) {
         </div>
       </main>
     );
-  const inPlan = (key: string) =>
-    !navFeature[key] ||
-    !me.subscription ||
-    me.subscription.plan.features.includes(navFeature[key]);
+  const inPlan = (key: string) => moduleAllowed(me.subscription, key);
   const canOpen = (n: (typeof nav)[number]) =>
     inPlan(n.key) &&
     (!n.permission ||
       me.permissions.includes(n.permission) ||
       (n.key === "attendance" && me.permissions.includes("attendance.read")) ||
+      (n.key === "workforce" && me.permissions.includes("attendance.manage")) ||
+      (n.key === "workforce" && me.permissions.includes("employees.write")) ||
       (n.key === "leave" && me.permissions.includes("timeoff.manage")) ||
       (n.key === "security" && me.permissions.includes("security.manage")) ||
       (n.key === "documents" && me.permissions.includes("documents.manage")) ||
@@ -402,7 +399,10 @@ export function Workspace({ module }: { module: string }) {
         />
       )}
       <aside className={`sidebar ${mobile ? "open" : ""}`}>
-        <Link href="/dashboard" className="brand shrink-0">
+        <Link
+          href={me.isSuperAdmin ? "/admin" : "/home"}
+          className="brand shrink-0"
+        >
           <BrandLogo branding={me.branding} />
         </Link>
         <div className="mx-5 mb-7 p-3 rounded-lg border border-[var(--border)] flex gap-3 items-center">
@@ -560,6 +560,10 @@ export function Workspace({ module }: { module: string }) {
             <div className="card empty">
               You do not have access to this page.
             </div>
+          ) : module === "workforce" ? (
+            <WorkforcePage me={me} notify={setToast} />
+          ) : module === "sites" ? (
+            <SiteDashboard />
           ) : module === "attendance" ? (
             <AttendancePage
               me={me}
