@@ -16,7 +16,7 @@ const solutions = [
     heading: "A clearer picture of every working day.",
     text: "Bring daily attendance, shifts and leave into one view. Let HR set policies that reflect how your team actually works.",
     points: [
-      "Face, GPS and biometric check-in options",
+      "Face and GPS check-in options",
       "Working-hour and half-day thresholds",
       "Configurable single-punch treatment",
       "Attendance reports and correction approvals",

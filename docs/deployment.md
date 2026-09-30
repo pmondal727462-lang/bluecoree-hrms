@@ -19,7 +19,6 @@ All times are UTC (IST is UTC+5:30). Every job is idempotent. To run one now: `n
 | Job | Schedule | Work |
 | --- | --- | --- |
 | `webhooks` | every minute | Delivers due webhooks and retries failures |
-| `biometric-sync` | every 5 minutes | Pulls BioStar devices, retries unmatched punches |
 | `training-reminders` | hourly at :15 | Session reminders a day ahead, certificate expiry notices |
 | `greetings` | hourly | Birthday and work-anniversary greetings on each company's local date (once a day) |
 | `stale-payments` | hourly at :45 | Closes online orders left unpaid for 7 days |
@@ -83,7 +82,7 @@ A company adds its domain in Branding and creates the TXT record `_hrms-verify.<
 - **Alert on:**
   - `/api/health` failing;
   - any `Job failed` for `backup-daily` or `backup-weekly`;
-  - repeated `Job failed` for `webhooks` or `biometric-sync`;
+  - repeated `Job failed` for `webhooks`;
   - 5xx rates above your baseline;
   - `Push failed` or `Notification message failed` bursts;
   - disk usage of the database and backup volumes.

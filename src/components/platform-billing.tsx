@@ -275,7 +275,7 @@ export function PlatformBilling({
               { key: "name", label: "Name", required: true },
               {
                 key: "feature",
-                label: "Module it grants (e.g. ai, biometric)",
+                label: "Module it grants (e.g. ai, payroll)",
               },
               {
                 key: "priceMonthly",

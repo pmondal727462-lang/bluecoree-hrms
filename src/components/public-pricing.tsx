@@ -31,7 +31,6 @@ type AddOn = {
 const labels: Record<string, string> = {
   attendance: "Attendance & leave",
   face: "Face attendance",
-  biometric: "Biometric devices",
   payroll: "Payroll",
   recruitment: "Recruitment",
   performance: "Performance",

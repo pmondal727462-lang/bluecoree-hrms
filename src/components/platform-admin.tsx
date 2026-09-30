@@ -816,11 +816,6 @@ function Plans({ notify }: { notify: Notify }) {
               { key: "locationLimit", label: "Location limit", type: "number" },
               { key: "currency", label: "Currency", required: true },
               { key: "employeeLimit", label: "Employee limit", type: "number" },
-              {
-                key: "deviceLimit",
-                label: "Biometric device limit",
-                type: "number",
-              },
               { key: "adminLimit", label: "Admin limit", type: "number" },
               {
                 key: "storageLimitMb",
@@ -882,7 +877,6 @@ function Plans({ notify }: { notify: Notify }) {
                   locationLimit: num(v.locationLimit),
                   currency: v.currency.toUpperCase(),
                   employeeLimit: num(v.employeeLimit),
-                  deviceLimit: num(v.deviceLimit),
                   adminLimit: num(v.adminLimit),
                   storageLimitMb: num(v.storageLimitMb),
                   apiCallLimitMonthly: num(v.apiCallLimitMonthly),

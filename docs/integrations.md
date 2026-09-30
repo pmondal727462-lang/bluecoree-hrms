@@ -2,6 +2,8 @@
 
 Checked on 27 September 2026 against the [master specification](master-specification.md) §42–45.
 
+**Current scope:** external biometric device integrations and their synchronization have been retired. The original device references below are historical; the integration hub no longer offers that category. Face attendance remains separate.
+
 | Requirement | Status |
 | --- | --- |
 | Public API `/api/v1/` for employees, attendance, leave, payroll and payslips; per-company API keys; usage tracking | Implemented for reading (hashed keys with scopes, expiry, revocation, rate limits, plan quota and a per-call log). **Added writes** with new scopes `employees.write`, `attendance.write` and `leave.write`: create or update employees, record attendance (work date and local times, through HR's manual-entry path) and approve or reject leave. Writes run through the same module code as the web app, with a context restricted to the key's scopes and audited as "API key: *name*". Tenant isolation is unchanged. |

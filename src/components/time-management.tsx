@@ -22,7 +22,6 @@ import {
 import { FieldTracking } from "./field-tracking";
 import { BreakControls } from "./workforce";
 import { AutoFaceScan } from "./auto-face-scan";
-import { BiometricDevices } from "./biometric-devices";
 import { FaceAdmin } from "./face-admin";
 import { CompOffPanel, LeaveTools, OptionalHolidays } from "./leave-extras";
 import { currentLocation } from "@/lib/geolocation";
@@ -794,7 +793,7 @@ function ManualAttendance({
               required
               minLength={5}
               maxLength={500}
-              placeholder="For example: biometric device offline, confirmed by manager"
+              placeholder="For example: missed scan, confirmed by manager"
             />
           </label>
         </SaveForm>
@@ -1094,7 +1093,6 @@ export function AttendancePage({
     requests = view === "requests",
     manual = view === "manual",
     rosters = view === "rosters",
-    devices = view === "devices",
     face = view === "face";
   const query = new URLSearchParams({
     scope: view === "own" ? "own" : "company",
@@ -1117,7 +1115,6 @@ export function AttendancePage({
       !requests &&
       !manual &&
       !rosters &&
-      !devices &&
       !face &&
       (view !== "own" || !!s.employee),
   });
@@ -1269,10 +1266,9 @@ export function AttendancePage({
                   {exporting ? "Preparing report…" : "Download report (CSV)"}
                 </Button>
               )}
-              {canManage &&
-                me.subscription?.plan.features.includes("biometric") && (
+              {canManage && (
                   <Button variant="outline" onClick={() => setImporting(true)}>
-                    Import device CSV
+                    Import attendance CSV
                   </Button>
                 )}
               {canManage && (
@@ -1398,9 +1394,6 @@ export function AttendancePage({
             me.subscription?.plan.features.includes("workplanning")
               ? [["rosters", "Rosters"]]
               : []),
-            ...(canRead && me.subscription?.plan.features.includes("biometric")
-              ? [["devices", "Devices"]]
-              : []),
             ...(canManage && me.subscription?.plan.features.includes("face")
               ? [["face", "Face"]]
               : []),
@@ -1420,8 +1413,6 @@ export function AttendancePage({
       )}
       {punchOnly ? null : face ? (
         <FaceAdmin notify={notify} />
-      ) : devices ? (
-        <BiometricDevices me={me} notify={notify} />
       ) : rosters ? (
         <Rosters me={me} s={s} notify={notify} />
       ) : manual ? (
@@ -1961,7 +1952,7 @@ export function AttendancePage({
       <Dialog
         open={importing}
         onOpenChange={setImporting}
-        title="Import biometric/device attendance"
+        title="Import attendance CSV"
         description="Upload a normalized CSV of completed daily sessions. This does not connect to a device directly. Up to 100 rows; the entire import is rejected if any row conflicts."
       >
         <SaveForm
@@ -1993,7 +1984,7 @@ export function AttendancePage({
             <input name="file" type="file" accept=".csv,text/csv" required />
           </label>
           <label>
-            Import reason / device *
+            Import reason *
             <input name="reason" required minLength={5} maxLength={500} />
           </label>
         </SaveForm>

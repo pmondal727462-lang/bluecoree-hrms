@@ -21,7 +21,6 @@ export const integrationCategories = [
   "ERP",
   "PAYROLL",
   "PAYMENT_GATEWAY",
-  "BIOMETRIC",
   "EMAIL",
   "SMS",
   "WHATSAPP",
@@ -110,7 +109,7 @@ const defaultMapping = {
 
 async function findIntegration(ctx: Context, id: string) {
   const found = await db.integration.findFirst({
-    where: { id, companyId: ctx.companyId },
+    where: { id, companyId: ctx.companyId, category: { not: "BIOMETRIC" } },
     include: { credential: true },
   });
   if (!found) throw new AppError(404, "Integration not found.");
@@ -352,7 +351,7 @@ export async function integrationsRoute(
 
   if (!resource && method === "GET") {
     const items = await db.integration.findMany({
-      where: { companyId: ctx.companyId },
+      where: { companyId: ctx.companyId, category: { not: "BIOMETRIC" } },
       include: { credential: true },
       orderBy: { name: "asc" },
     });

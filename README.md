@@ -129,6 +129,6 @@ Build, unit/integration tests and HTTP smoke were executed locally. Browser visu
 
 ## Phase boundary
 
-Use the current master sequence in the [implementation audit](docs/implementation-audit.md), rather than the older phase labels elsewhere in this repository. Foundation remediation is verified before advancing. Direct biometric hardware integration requires vendor/device configuration; the existing CSV adapter does not establish live device synchronization.
+Use the current master sequence in the [implementation audit](docs/implementation-audit.md), rather than the older phase labels elsewhere in this repository. External biometric device integration has been removed. Face attendance and general HR attendance CSV imports remain available; historical device records are retained.
 
 Reference documentation used: [Next.js route handlers](https://nextjs.org/docs/app/api-reference/file-conventions/route) and [Prisma 6 data sources](https://www.prisma.io/docs/orm/v6/prisma-schema/overview/data-sources).

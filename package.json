@@ -20,7 +20,6 @@
     "db:seed-checking": "tsx scripts/seed-checking.ts",
     "env:init": "tsx scripts/init-env.ts",
     "webhooks:deliver": "tsx scripts/webhooks.ts",
-    "biometric:sync": "tsx scripts/biometric-sync.ts",
     "backup": "tsx scripts/backup.ts",
     "backup:restore": "tsx scripts/restore-backup.ts",
     "worker": "tsx scripts/worker.ts",

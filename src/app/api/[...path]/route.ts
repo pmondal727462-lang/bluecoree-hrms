@@ -90,11 +90,6 @@ import {
   onboardingRoute,
 } from "@/modules/onboarding/service";
 import { announcementsRoute } from "@/modules/announcements/service";
-import {
-  biometricRoute,
-  genericPush,
-  hikvisionPush,
-} from "@/modules/biometric/service";
 import { notificationsRoute } from "@/modules/notifications/service";
 import { home } from "@/modules/dashboard/home";
 import { subscriptionPermissions } from "@/lib/module-access";
@@ -130,8 +125,9 @@ async function route(
 ) {
   const started = Date.now();
   try {
-    await csrf(req);
     const { path } = await params;
+    if (path[0] === "biometric") throw new AppError(404, "Endpoint not found.", "NOT_FOUND");
+    await csrf(req);
     const route = path.join("/");
     const method = req.method;
     const ok = (data: unknown, status = 200) =>
@@ -207,16 +203,6 @@ async function route(
       return ok(await offerPortal(req, path[2]));
     if (path[0] === "public" && path[1] === "onboarding" && path[2])
       return ok(await onboardingPortal(req, path[2], path[4]));
-    // Biometric device pushes authenticate with a device token, not a session.
-    if (route === "biometric/push" && method === "POST")
-      return ok(await genericPush(req));
-    if (
-      path[0] === "biometric" &&
-      path[1] === "hikvision" &&
-      path.length === 3 &&
-      method === "POST"
-    )
-      return ok(await hikvisionPush(req, path[2]));
     if (path[0] === "public" && path[1] === "branding") {
       const result = await publicBrandingRoute(req, path);
       return result instanceof NextResponse ? result : ok(result);
@@ -241,7 +227,7 @@ async function route(
       const moduleFeature: Record<string, Feature> = {
         ai: "ai",
         payroll: "payroll",
-        time: path[1] === "import" ? "biometric" : "attendance",
+        time: "attendance",
         v1: "mobile",
         integrations: "api",
         dashboard: "reports",
@@ -252,7 +238,6 @@ async function route(
         assets: "assets",
         expenses: "expenses",
         onboarding: "onboarding",
-        biometric: "biometric",
       };
       const feature: Feature | null = moduleFeature[path[0]] ?? null;
       if (feature) await requireFeature(ctx.companyId, feature);
@@ -382,7 +367,6 @@ async function route(
         onboarding: onboardingRoute,
         notifications: notificationsRoute,
         announcements: (r, c, p) => announcementsRoute(r, c, p[1]),
-        biometric: biometricRoute,
         home: (_r, c) => home(c),
         recruitment: recruitmentRoute,
         performance: performanceRoute,

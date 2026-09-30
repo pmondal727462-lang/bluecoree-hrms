@@ -22,7 +22,6 @@ export const planFeatures = [
   "payroll",
   "ai",
   "mobile",
-  "biometric",
   "reports",
   "api",
   "whitelabel",
@@ -115,7 +114,7 @@ export async function entitlements(companyId: string, client: Client = db) {
         ...sub.plan.features,
         ...addOns.flatMap((a) => (a.addOn.feature ? [a.addOn.feature] : [])),
         ...sub.enabledFeatures,
-      ].filter((feature) => !sub.disabledFeatures.includes(feature)),
+      ].filter((feature) => feature !== "biometric" && !sub.disabledFeatures.includes(feature)),
     ),
     addOns: addOns.map((a) => ({
       code: a.addOn.code,
@@ -359,7 +358,7 @@ const serializePlan = <T extends object>(p: T) =>
   Object.fromEntries(
     Object.entries(p).map(([k, v]) => [
       k,
-      v instanceof Prisma.Decimal ? Number(v) : v,
+      k === "features" && Array.isArray(v) ? v.filter((feature) => feature !== "biometric") : v instanceof Prisma.Decimal ? Number(v) : v,
     ]),
   ) as { [K in keyof T]: T[K] extends Prisma.Decimal ? number : T[K] };
 

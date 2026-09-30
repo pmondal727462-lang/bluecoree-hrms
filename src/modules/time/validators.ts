@@ -258,6 +258,7 @@ export const listSchema = z.object({
       "Manual",
       "Regularization",
       "Device CSV",
+      "CSV import",
     ])
     .optional(),
   overtimeStatus: z

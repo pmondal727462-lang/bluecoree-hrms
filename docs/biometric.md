@@ -1,5 +1,7 @@
 # Phase 4 — Biometric device integration
 
+**Retired:** external biometric device integration has been removed. Device registration, mappings, vendor connectors, push endpoints and scheduled synchronization are no longer available. Historical database records are retained. Face attendance remains supported. The notes below describe the former implementation only.
+
 Checked and built on 27 September 2026 against the [master specification](master-specification.md) §18 (and the device limit in §48). Before this pass, only a generic "BIOMETRIC" integration category and the device CSV import existed.
 
 ## Requirement status

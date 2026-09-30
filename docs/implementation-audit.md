@@ -2,6 +2,8 @@
 
 Review date: 26 September 2026. Scope: existing source, Prisma schema and migrations, API routing, authentication/RBAC, UI modules, and automated checks against the supplied 18-phase [master specification](master-specification.md).
 
+**Later scope change:** external biometric device integration has been removed at the product owner's request. Phase 4 entries below describe the historical implementation. Device data is retained; AI face attendance remains supported.
+
 The application has substantial implementation beyond Phase 1, but the complete commercial product is **not finished or production-verified**. Existing documentation uses an older phase numbering scheme; the table below uses the master specification. A module's presence does not establish completion of every requested workflow.
 
 ## Status on 27 September 2026 (all phases)

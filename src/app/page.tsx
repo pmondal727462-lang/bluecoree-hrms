@@ -24,7 +24,7 @@ const capabilities = [
   {
     icon: ScanFace,
     title: "Attendance you can verify",
-    text: "Bring face, GPS and biometric attendance together. Set the working hours and punch rules that fit your teams.",
+    text: "Bring face and GPS attendance together. Set the working hours and punch rules that fit your teams.",
     href: "attendance",
   },
   {

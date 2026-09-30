@@ -2106,9 +2106,8 @@ model EmployeeBankAccount {
   @@map("employee_bank_accounts")
 }
 
-// A biometric terminal or vendor server. PUSH devices send punches to this
-// server (ZKTeco/eSSL ADMS, Hikvision event push, generic JSON); PULL devices
-// are polled over their vendor API (Suprema BioStar 2).
+// Retired external device records, retained for historical attendance/audits.
+// The application no longer registers, polls or accepts punches from devices.
 model AttendanceDevice {
   id                  String              @id @default(cuid())
   companyId           String

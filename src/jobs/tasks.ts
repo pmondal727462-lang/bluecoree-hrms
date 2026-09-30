@@ -1,7 +1,6 @@
 import { db, withSystem, withTenant } from "@/lib/db";
 import { logger } from "@/lib/errors";
 import { deliverDue } from "@/modules/integrations/outbound";
-import { syncDueDevices } from "@/modules/biometric/service";
 import { trainingReminders } from "@/modules/training/service";
 import { billingReminders } from "@/modules/saas/billing";
 import { runRetention, retentionCategories } from "@/modules/auth/retention";
@@ -180,7 +179,6 @@ export const tasks: Record<
     run: deliverPendingLeadNotifications,
   },
   webhooks: { pattern: "* * * * *", run: () => deliverDue(undefined, 500) },
-  "biometric-sync": { pattern: "*/5 * * * *", run: () => syncDueDevices() },
   "training-reminders": {
     pattern: "15 * * * *",
     run: async () => sum(await eachCompany((c) => trainingReminders(c.id))),

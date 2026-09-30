@@ -21,8 +21,8 @@ const faq: [string, string][] = [
     "No. Payments are made with the payment provider; we keep only the payment reference and status.",
   ],
   [
-    "Can we connect our biometric devices?",
-    "Yes. ZKTeco/eSSL (ADMS push), Hikvision event push, Suprema BioStar 2 and a generic JSON push are supported.",
+    "How can employees mark attendance?",
+    "Employees use face verification or the attendance methods allowed by their company. External biometric device integration is not supported.",
   ],
   [
     "Is there an API?",

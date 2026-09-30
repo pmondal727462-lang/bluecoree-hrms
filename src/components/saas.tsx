@@ -43,7 +43,6 @@ export const featureLabels: Record<string, string> = {
   payroll: "Payroll",
   ai: "AI HR Copilot",
   mobile: "Mobile app",
-  biometric: "Biometric import",
   reports: "Reports & dashboard",
   api: "API, webhooks & integrations",
   whitelabel: "White-label branding",

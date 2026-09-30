@@ -72,8 +72,6 @@ export async function rateLimit(key: string, limit = 20) {
 export async function csrf(req: NextRequest) {
   if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return;
   if (new URL(req.url).pathname.includes("/api/v1/auth/")) return;
-  // Device push URLs carry their own token and never use session cookies.
-  if (new URL(req.url).pathname.startsWith("/api/biometric/hikvision/")) return;
   // The payment webhook is authenticated by its body signature.
   if (new URL(req.url).pathname === "/api/billing/razorpay/webhook") return;
   // API-key clients are servers without cookies; the key authenticates them.

@@ -14,6 +14,7 @@ const queueName = "hrms-jobs";
 async function withRedis(url: string) {
   const connection = new IORedis(url, { maxRetriesPerRequest: null });
   const queue = new Queue(queueName, { connection });
+  await queue.removeJobScheduler("biometric-sync");
   for (const [name, t] of Object.entries(tasks))
     await queue.upsertJobScheduler(
       name,

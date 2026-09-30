@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { emailConfigured } from "@/integrations/email";
 import { backupConfig } from "./backup";
+import { faceProviderConfigured } from "@/modules/face/service";
 
 type Status = "UP" | "DEGRADED" | "DOWN" | "NOT_CONFIGURED";
 type Check = {
@@ -183,20 +184,12 @@ export async function runHealthChecks() {
         note: "Push tokens are registered, but no push provider (FCM/APNs) sender is configured.",
       },
     })),
-    timed("biometric", async () => {
-      const [face, failing] = await Promise.all([
-        Promise.resolve(
-          !!process.env.FACE_PROVIDER_URL && !!process.env.FACE_PROVIDER_KEY,
-        ),
-        db.integration.count({
-          where: { category: "BIOMETRIC", active: true, lastStatus: "FAILED" },
-        }),
-      ]);
+    timed("face", async () => {
+      const face = faceProviderConfigured();
       return {
-        status: !face ? "NOT_CONFIGURED" : failing ? "DEGRADED" : "UP",
+        status: face ? "UP" : "NOT_CONFIGURED",
         details: {
           faceProviderConfigured: face,
-          failingBiometricIntegrations: failing,
         },
       };
     }),

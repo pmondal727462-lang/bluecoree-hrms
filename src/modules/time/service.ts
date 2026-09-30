@@ -1714,7 +1714,7 @@ async function importAttendance(req: NextRequest, ctx: Context) {
           checkOut: row.checkOut,
           reason: b.reason,
         },
-        "Device CSV",
+        "CSV import",
       );
     }
     return { imported: rows.length };
