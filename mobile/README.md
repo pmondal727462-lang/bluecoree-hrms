@@ -23,11 +23,30 @@ Android and iOS employee app for the HRMS API (spec §40–41). It uses the vers
 cd mobile
 npm install
 # PowerShell: set your deployed server address (no /api suffix)
-$env:EXPO_PUBLIC_API_URL='https://your-bluecoreehr-site.example'
+$env:EXPO_PUBLIC_API_URL='https://bluecoreehr.vercel.app'
 npx expo start
 ```
 
 The company plan must include the `mobile` feature. Native builds use EAS (`eas build`). Set `expo.extra.eas.projectId` for push tokens.
+
+## Employee face attendance
+
+The app defaults to the live BlueCoreeHR server. Employees use their existing company code and employee account; secure refresh tokens keep them signed in. Employee profiles and attendance remain in the same server database as the management dashboard.
+
+After sign-in, Attendance opens. On first use, choose **Agree and register my face** to consent to storing an encrypted face template. The front camera captures automatically after it is ready. Once enrolled, choose **Face attendance**: a new camera capture is sent for server identity and liveness verification. The first successful scan records check-in; subsequent successful scans update check-out under the server attendance rules. Every scan requires an explicit start, so navigating screens cannot repeatedly punch attendance. Camera images are resized and local temporary files are removed after preparation; templates are never saved on the phone. GPS is requested only when the employee policy requires it. Menus use the server's subscription-filtered permissions.
+
+Face scanning stays disabled until a real face and liveness provider is configured on the server. Production currently needs that setup; an app build alone does not enable AI verification. See [provider setup](../docs/compreface.md).
+
+To build an Android APK after signing in to your Expo account:
+
+```powershell
+cd D:\Pintu\projects\mobile
+npx eas-cli login
+npx eas-cli build:configure
+npx eas-cli build --profile preview --platform android
+```
+
+The preview and production profiles already point to `https://bluecoreehr.vercel.app`. A signed native build and physical-device camera tests are still required before distributing the app.
 
 ## Push notifications
 

@@ -36,7 +36,7 @@
       "permissions": ["ACCESS_FINE_LOCATION", "CAMERA", "POST_NOTIFICATIONS"]
     },
     "extra": {
-      "apiUrl": "https://hrms.example.com"
+      "apiUrl": "https://bluecoreehr.vercel.app"
     }
   }
 }

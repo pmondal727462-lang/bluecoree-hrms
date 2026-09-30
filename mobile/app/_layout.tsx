@@ -25,7 +25,7 @@ export default function RootLayout() {
       setAuthed(now);
       const onLogin = segments[0] === "login";
       if (!now && !onLogin) router.replace("/login");
-      if (now && onLogin) router.replace("/");
+      if (now && onLogin) router.replace("/attendance");
     });
   }, [ready, authed, segments, router]);
   useEffect(() => {

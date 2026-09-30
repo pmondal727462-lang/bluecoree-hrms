@@ -1,14 +1,16 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { Text, View } from "react-native";
 import * as Location from "expo-location";
-import { CameraView, useCameraPermissions } from "expo-camera";
+import { useCameraPermissions } from "expo-camera";
+import { FaceCamera } from "@/face-camera";
 import { api } from "@/api";
 import { stopNativeTracking } from "@/background-tracking";
 import { TrackingPanel } from "@/tracking-panel";
 import { Button, Card, Empty, Message, Row, Screen, s, useApi } from "@/ui";
 
 type Punch = { checkIn: string; checkOut: string | null; status: string } | null;
-type Summary = { current: Punch; open: Punch };
+type Summary = { current: Punch; open: Punch; employeePolicy: { geofenceEnabled: boolean; gpsTrackingEnabled: boolean } };
+type FaceStatus = { enrolled: boolean; providerConfigured: boolean; enrollmentRequired: boolean };
 type Day = { id: string; workDate: string; checkIn: string; checkOut: string | null; status: string; workedMinutes: number };
 const time = (v: string | null) =>
   v ? new Date(v).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
@@ -17,16 +19,19 @@ const time = (v: string | null) =>
 // later punches move the check-out, as on the web app.
 export default function Attendance() {
   const summary = useApi<Summary>("time/summary");
+  const face = useApi<FaceStatus>("v1/face/status");
   const month = new Date().toISOString().slice(0, 7);
   const days = useApi<{ items: Day[] }>(`v1/attendance?from=${month}-01`);
   const [camera, setCamera] = useState(false);
   const [permission, requestPermission] = useCameraPermissions();
-  const ref = useRef<CameraView>(null);
   const [msg, setMsg] = useState<{ text: string; error?: boolean }>({ text: "" });
 
   const location = async () => {
+    const policy = summary.data?.employeePolicy;
+    if (!policy) throw new Error("Attendance policy is still loading. Try again.");
+    if (!policy.geofenceEnabled && !policy.gpsTrackingEnabled) return undefined;
     const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== "granted") return undefined;
+    if (status !== "granted") throw new Error("Your company requires location access for attendance.");
     const p = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
     return {
       latitude: p.coords.latitude,
@@ -46,6 +51,7 @@ export default function Attendance() {
       setCamera(false);
       await Promise.all([summary.reload(), days.reload()]);
     } catch (e) {
+      setCamera(false);
       setMsg({ text: (e as Error).message, error: true });
     }
   };
@@ -59,33 +65,34 @@ export default function Attendance() {
         <Row label="Check-out" value={time(t?.checkOut ?? null)} />
         {t ? <Row label="Status" value={t.status.toLowerCase().replace("_", " ")} /> : null}
         <Message text={msg.text} error={msg.error} />
+        <Message text={summary.error || face.error} error />
+        {face.data && !face.data.providerConfigured ? <Message text="Face attendance is awaiting your company's face verification service setup." /> : null}
         {camera ? (
-          <View style={{ gap: 8 }}>
-            <CameraView ref={ref} facing="front" style={{ height: 320, borderRadius: 12 }} />
-            <Button
-              label="Scan my face"
-              onPress={async () => {
-                const shot = await ref.current?.takePictureAsync({ base64: true, quality: 0.4 });
-                if (shot?.base64) await punch("face-punch", `data:image/jpeg;base64,${shot.base64}`);
-              }}
-            />
-            <Button label="Cancel" kind="outline" onPress={() => setCamera(false)} />
-          </View>
+          <FaceCamera onCancel={() => setCamera(false)} onError={(text) => { setCamera(false); setMsg({ text, error: true }); }}
+            onSample={async (sample) => {
+              if (!face.data?.enrolled) {
+                await api("v1/face/enroll", { method: "POST", body: { faceSample: sample, consent: true } });
+                setCamera(false);
+                setMsg({ text: "Face registered securely. Start face attendance to record your check-in." });
+                await face.reload();
+              } else await punch("face-punch", sample);
+            }} />
         ) : (
           <View style={{ gap: 8 }}>
             <Button
-              label="Face attendance"
+              label={face.data?.enrolled ? "Face attendance" : "Agree and register my face"}
+              disabled={!face.data?.providerConfigured || summary.loading}
               onPress={async () => {
                 if (!permission?.granted && !(await requestPermission()).granted)
                   return setMsg({ text: "Allow camera access for face attendance.", error: true });
                 setCamera(true);
               }}
             />
-            <Button label={checkedIn ? "Check out with GPS" : "Check in with GPS"} kind="outline" onPress={() => punch(checkedIn ? "check-out" : "check-in")} />
+            {!face.data?.enrolled ? <Text style={s.muted}>I consent to an encrypted face template being stored on the HRMS server for attendance verification. Contact HR to reset or remove it.</Text> : null}
           </View>
         )}
         <Text style={s.muted}>
-          Your location is sent with each punch when your company uses geofences.
+          Your first verified scan records check-in. Later scans update check-out. Use the same employee login as the website; your attendance is saved on the HRMS server.
         </Text>
       </Card>
       <TrackingPanel checkedIn={checkedIn} />

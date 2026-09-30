@@ -1,22 +1,24 @@
 import { useRouter } from "expo-router";
 import { signOut } from "@/api";
-import { Button, Card, Screen } from "@/ui";
+import { Button, Card, Message, Screen, useApi } from "@/ui";
 
 const links = [
-  ["Payslips", "/payslips"],
-  ["Expenses", "/expenses"],
-  ["Documents", "/documents"],
-  ["Notifications", "/notifications"],
-  ["HR requests", "/helpdesk"],
-  ["Profile", "/profile"],
+  ["Payslips", "/payslips", "payroll.self"],
+  ["Expenses", "/expenses", "expenses.self"],
+  ["Documents", "/documents", "profile.read"],
+  ["Notifications", "/notifications", "profile.read"],
+  ["HR requests", "/helpdesk", "profile.read"],
+  ["Profile", "/profile", "profile.read"],
 ] as const;
 
 export default function More() {
   const router = useRouter();
+  const account = useApi<{ permissions: string[] }>("auth/me");
   return (
-    <Screen>
+    <Screen loading={account.loading} onRefresh={account.reload}>
+      <Message text={account.error} error />
       <Card>
-        {links.map(([label, href]) => (
+        {links.filter(([, , permission]) => account.data?.permissions.includes(permission)).map(([label, href]) => (
           <Button key={href} label={label} kind="outline" onPress={() => router.push(href)} />
         ))}
       </Card>

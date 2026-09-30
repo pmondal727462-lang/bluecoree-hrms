@@ -60,7 +60,7 @@ export default function Login() {
                   totp || undefined,
                 );
                 await registerForPush().catch(() => null);
-                router.replace("/");
+                router.replace("/attendance");
               } catch (e) {
                 const err = e as ApiError;
                 if (err.code === "TWO_FACTOR_REQUIRED") setNeedsCode(true);
