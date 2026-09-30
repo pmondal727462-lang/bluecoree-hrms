@@ -43,17 +43,17 @@ export const policySchema = z
     fieldTrackingEnabled: z.boolean().optional(),
     fieldTrackingIntervalSeconds: z.number().int().min(15).max(300).optional(),
     fieldTrackingMaxMinutes: z.number().int().min(15).max(1440).optional(),
-    faceAttendanceEnabled: z.boolean().optional(),
+    faceAttendanceEnabled: z.literal(true).optional(),
     overtimeRequiresApproval: z.boolean().optional(),
     singlePunchStatus: z
       .enum(["MISSED_PUNCH", "PRESENT", "ABSENT", "HALF_DAY"])
       .optional(),
     faceLivenessRequired: z.literal(true).optional(),
-    faceConfidenceThreshold: z.number().min(0.5).max(0.99).optional(),
-    faceMaxFailedAttempts: z.number().int().min(1).max(20).optional(),
-    faceLockoutMinutes: z.number().int().min(1).max(1440).optional(),
-    // NONE: face is required; WEB: web/GPS attendance is allowed without face.
-    faceFallback: z.enum(["NONE", "WEB"]).optional(),
+    faceConfidenceThreshold: z.literal(0.8).optional(),
+    faceMaxFailedAttempts: z.literal(5).optional(),
+    faceLockoutMinutes: z.literal(15).optional(),
+    // Face verification is mandatory; legacy WEB fallback cannot be enabled.
+    faceFallback: z.literal("NONE").optional(),
     compOffEnabled: z.boolean().optional(),
     compOffExpiryDays: z.number().int().min(1).max(365).optional(),
     optionalHolidayLimit: z.number().int().min(0).max(30).optional(),

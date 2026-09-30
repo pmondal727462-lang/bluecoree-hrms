@@ -27,10 +27,16 @@ import {
   attendanceLop,
   encashment,
   instalments,
-  monthBounds as monthRange,
   overtimePay,
 } from "./compute";
 import { loansRoute } from "./loans";
+import {
+  salaryPeriod,
+  runPeriod,
+  defaultSalaryPeriod,
+  type PayrollDates,
+  type SalaryPeriodPolicy,
+} from "./period";
 
 type Tx = Prisma.TransactionClient;
 const eligible = ["Active", "Probation", "On notice"];
@@ -109,9 +115,9 @@ async function lopDays(
   tx: Tx,
   companyId: string,
   employee: { id: string; joinedAt: Date },
-  p: string,
+  p: PayrollDates,
 ) {
-  const { start, end } = monthRange(p);
+  const { start, end } = runPeriod(p);
   const [company, holidays, leave] = await Promise.all([
     tx.company.findUniqueOrThrow({ where: { id: companyId } }),
     tx.holiday.findMany({
@@ -131,12 +137,14 @@ async function lopDays(
   const hol = holidays.map((h) => iso(h.date));
   let days = 0;
   for (const l of leave)
-    days += workingDays(
-      iso(l.startDate > start ? l.startDate : start),
-      iso(l.endDate < end ? l.endDate : end),
-      company.workingDays,
-      hol,
-    );
+    days +=
+      (l.halfDay ? 0.5 : 1) *
+      workingDays(
+        iso(l.startDate > start ? l.startDate : start),
+        iso(l.endDate < end ? l.endDate : end),
+        company.workingDays,
+        hol,
+      );
   if (employee.joinedAt > start)
     days += Math.round(
       (Math.min(employee.joinedAt.getTime(), end.getTime() + 86400000) -
@@ -176,7 +184,7 @@ async function yearToDate(
 }
 async function computeItem(
   tx: Tx,
-  run: { id: string; companyId: string; period: string },
+  run: { id: string; companyId: string } & PayrollDates,
   employee: {
     id: string;
     joinedAt: Date;
@@ -185,18 +193,18 @@ async function computeItem(
   stat: Stat,
   overrides: Overrides = {},
 ) {
-  const { days } = monthRange(run.period);
+  const { days } = runPeriod(run);
   const s = employee.salaryStructure;
   // Absences from attendance are added to unpaid leave when the company
   // enables it; a manual LOP override replaces both.
   const absent =
     overrides.lopDays === undefined && stat.options.lopFromAttendance
-      ? await attendanceLop(tx, run.companyId, employee, run.period)
+      ? await attendanceLop(tx, run.companyId, employee, run)
       : 0;
   const lop = Math.min(
     days,
     overrides.lopDays ??
-      (await lopDays(tx, run.companyId, employee, run.period)) + absent,
+      (await lopDays(tx, run.companyId, employee, run)) + absent,
   );
   // Approved, unpaid expense claims are reimbursed through this run.
   await tx.expenseClaim.updateMany({
@@ -229,7 +237,7 @@ async function computeItem(
     tx,
     run.companyId,
     employee.id,
-    run.period,
+    run,
     monthly,
     stat.options,
   );
@@ -343,9 +351,9 @@ async function totals(tx: Tx, runId: string) {
 }
 async function calculateRun(
   tx: Tx,
-  run: { id: string; companyId: string; period: string },
+  run: { id: string; companyId: string } & PayrollDates,
 ) {
-  const { end } = monthRange(run.period);
+  const { end } = runPeriod(run);
   const stat = await statutoryConfig(run.companyId, tx, run.period);
   const employees = await tx.employee.findMany({
     where: {
@@ -652,6 +660,52 @@ export async function payrollAdmin(
   const read = () => requirePermission(ctx, "payroll.read");
   const manage = () => requirePermission(ctx, "payroll.manage");
 
+  if (resource === "period-policy" && !id) {
+    if (method === "GET") {
+      read();
+      const policy = await db.companySetting.findUnique({
+        where: { companyId: ctx.companyId },
+        select: { salaryPeriodMode: true, salaryBoundaryDay: true },
+      });
+      return policy ?? defaultSalaryPeriod;
+    }
+    if (method === "PUT") {
+      manage();
+      const b = z
+        .object({
+          salaryPeriodMode: z.enum(["CALENDAR_MONTH", "START_DAY", "END_DAY"]),
+          salaryBoundaryDay: z.number().int().min(1).max(31),
+        })
+        .strict()
+        .parse(await json(req));
+      if (b.salaryPeriodMode === "CALENDAR_MONTH") b.salaryBoundaryDay = 1;
+      return mutate(ctx, async (tx) => {
+        const previous = await tx.companySetting.findUnique({
+          where: { companyId: ctx.companyId },
+          select: { salaryPeriodMode: true, salaryBoundaryDay: true },
+        });
+        const saved = await tx.companySetting.upsert({
+          where: { companyId: ctx.companyId },
+          create: { companyId: ctx.companyId, ...b },
+          update: b,
+          select: { salaryPeriodMode: true, salaryBoundaryDay: true },
+        });
+        await audit(
+          tx,
+          ctx,
+          "UPDATE",
+          "salary_period_policy",
+          ctx.companyId,
+          previous ?? defaultSalaryPeriod,
+          saved,
+          ip(req),
+        );
+        return saved;
+      });
+    }
+    throw new AppError(405, "Method not allowed.");
+  }
+
   if (resource === "statutory") {
     if (method === "GET") {
       read();
@@ -785,10 +839,52 @@ export async function payrollAdmin(
             409,
             "A payroll run already exists for this month.",
           );
+        const policy = await tx.companySetting.findUnique({
+          where: { companyId: ctx.companyId },
+          select: { salaryPeriodMode: true, salaryBoundaryDay: true },
+        });
+        const bounds = salaryPeriod(
+          b.period,
+          (policy as SalaryPeriodPolicy | null) ?? defaultSalaryPeriod,
+        );
+        const existingRuns = await tx.payrollRun.findMany({
+          where: { companyId: ctx.companyId },
+          select: { period: true, periodStart: true, periodEnd: true },
+        });
+        const overlap = existingRuns.find((r) => {
+          const dates = runPeriod(r);
+          return dates.start <= bounds.end && dates.end >= bounds.start;
+        });
+        if (overlap)
+          throw new AppError(
+            409,
+            `This salary period overlaps payroll ${overlap.period}. Existing runs keep their dates; remove an unsubmitted conflicting draft or use a compatible salary period policy.`,
+            "PAYROLL_PERIOD_OVERLAP",
+          );
+        const monthIndex = (period: string) =>
+          Number(period.slice(0, 4)) * 12 + Number(period.slice(5));
+        const gap = existingRuns.find((r) => {
+          const difference = monthIndex(b.period) - monthIndex(r.period);
+          const dates = runPeriod(r);
+          return (
+            (difference === 1 &&
+              bounds.start.getTime() !== dates.end.getTime() + 86400000) ||
+            (difference === -1 &&
+              bounds.end.getTime() + 86400000 !== dates.start.getTime())
+          );
+        });
+        if (gap)
+          throw new AppError(
+            409,
+            `This policy would leave unpaid dates between this run and payroll ${gap.period}. Use a compatible salary period policy before calculating.`,
+            "PAYROLL_PERIOD_GAP",
+          );
         const run = await tx.payrollRun.create({
           data: {
             companyId: ctx.companyId,
             period: b.period,
+            periodStart: bounds.start,
+            periodEnd: bounds.end,
             createdBy: ctx.userId,
           },
         });
@@ -800,7 +896,11 @@ export async function payrollAdmin(
           "payroll_runs",
           run.id,
           undefined,
-          { period: b.period },
+          {
+            period: b.period,
+            periodStart: iso(bounds.start),
+            periodEnd: iso(bounds.end),
+          },
           ip(req),
         );
         return { ...run, totals: summary };
@@ -1054,7 +1154,7 @@ export async function payrollAdmin(
               : "Payroll must be submitted and approved before it is processed.",
           );
         const summary = run.totals;
-        const { start, end } = monthRange(run.period);
+        const { start, end } = runPeriod(run);
         const items = await tx.payrollRunItem.findMany({
           where: { runId: run.id },
         });
@@ -1108,20 +1208,18 @@ export async function payrollAdmin(
                 "PAYROLL_STALE",
               );
           }
-          const clash = await tx.payslip.findUnique({
+          const clash = await tx.payslip.findFirst({
             where: {
-              companyId_employeeId_periodStart_periodEnd: {
-                companyId: ctx.companyId,
-                employeeId: i.employeeId,
-                periodStart: start,
-                periodEnd: end,
-              },
+              companyId: ctx.companyId,
+              employeeId: i.employeeId,
+              periodStart: { lte: end },
+              periodEnd: { gte: start },
             },
           });
           if (clash)
             throw new AppError(
               409,
-              "A payslip for this month already exists for one of the employees. Remove it before processing.",
+              "An overlapping payslip already exists for one of the employees. Review its dates before processing.",
             );
           const slip = await tx.payslip.create({
             data: {

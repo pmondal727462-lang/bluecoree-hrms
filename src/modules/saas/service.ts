@@ -510,7 +510,7 @@ export async function platformSaas(
       by: ["companyId"],
       _max: { lastLoginAt: true },
     });
-    const [activeUsers, integrations, usage] = await Promise.all([
+    const [activeUsers, integrations, usage, loginAccounts] = await Promise.all([
       db.session
         .groupBy({
           by: ["userId"],
@@ -529,6 +529,16 @@ export async function platformSaas(
         _count: { _all: true },
       }),
       db.subscriptionUsage.findMany({ where: { period: period(now) } }),
+      db.user.findMany({
+        where: {
+          companyId: { in: companies.map((c) => c.id) },
+          active: true,
+          isSuperAdmin: false,
+          role: { name: { in: ["Company Owner", "Company Admin"] } },
+        },
+        select: { companyId: true, email: true, name: true },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      }),
     ]);
     return companies.map((c) => {
       const sub = c.subscription;
@@ -537,6 +547,9 @@ export async function platformSaas(
         id: c.id,
         name: c.name,
         code: c.code,
+        loginAccounts: loginAccounts
+          .filter((account) => account.companyId === c.id)
+          .map(({ email, name }) => ({ email, name })),
         createdAt: c.createdAt,
         plan: sub?.plan.name ?? null,
         planCode: sub?.plan.code ?? null,

@@ -3,46 +3,40 @@ import { AppError } from "@/lib/errors";
 import { addDays, dayDate, localDay } from "@/modules/time/rules";
 import type { PayrollOptions } from "./rules";
 import { effectiveAttendanceStatus } from "@/modules/time/single-punch";
+import { salaryPeriod, type PayrollDates, runPeriod } from "./period";
 
 type Tx = Prisma.TransactionClient;
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 export function monthBounds(period: string) {
-  const [y, m] = period.split("-").map(Number);
-  const start = new Date(Date.UTC(y, m - 1, 1));
-  const end = new Date(Date.UTC(y, m, 0));
-  return { start, end, days: end.getUTCDate() };
+  return salaryPeriod(period);
 }
 
 // Once a month's payroll is under review, approved or processed, attendance
 // and leave for that month are locked.
 export async function assertPayrollOpen(tx: Tx, companyId: string, date: Date) {
-  const period = iso(date).slice(0, 7);
+  return assertPayrollOpenRange(tx, companyId, date, date);
+}
+
+export async function assertPayrollOpenRange(tx: Tx, companyId: string, start: Date, end: Date) {
   const run = await tx.payrollRun.findFirst({
     where: {
       companyId,
-      period,
       status: { in: ["SUBMITTED", "APPROVED", "PROCESSED"] },
+      OR: [
+        { periodStart: { lte: end }, periodEnd: { gte: start } },
+        { periodStart: null, period: { gte: iso(start).slice(0, 7), lte: iso(end).slice(0, 7) } },
+      ],
     },
-    select: { status: true },
+    select: { status: true, period: true },
   });
   if (run)
     throw new AppError(
       409,
-      `Payroll for ${period} is ${run.status === "PROCESSED" ? "processed" : "under review"}; attendance and leave for that month are locked.`,
+      `Payroll for ${run.period} is ${run.status === "PROCESSED" ? "processed" : "under review"}; attendance and leave within its salary period are locked.`,
       "PAYROLL_LOCKED",
     );
 }
 
-export async function assertPayrollOpenRange(
-  tx: Tx,
-  companyId: string,
-  start: Date,
-  end: Date,
-) {
-  const d = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
-  for (; d <= end; d.setUTCMonth(d.getUTCMonth() + 1))
-    await assertPayrollOpen(tx, companyId, d);
-}
 
 // Unpaid days from attendance for the elapsed part of the month: an absent
 // working day counts 1, a half day or short day 0.5. Holidays, approved leave
@@ -53,9 +47,9 @@ export async function attendanceLop(
   tx: Tx,
   companyId: string,
   employee: { id: string; joinedAt: Date },
-  period: string,
+  period: string | PayrollDates,
 ) {
-  const { start, end } = monthBounds(period);
+  const { start, end } = typeof period === "string" ? monthBounds(period) : runPeriod(period);
   const company = await tx.company.findUniqueOrThrow({
     where: { id: companyId },
     select: { workingDays: true, timezone: true, attendancePolicy: true },
@@ -144,11 +138,11 @@ export async function overtimePay(
   tx: Tx,
   companyId: string,
   employeeId: string,
-  period: string,
+  period: string | PayrollDates,
   monthly: { basic: number; gross: number },
   options: PayrollOptions,
 ) {
-  const { start, end, days } = monthBounds(period);
+  const { start, end, days } = typeof period === "string" ? monthBounds(period) : runPeriod(period);
   const sum = await tx.attendance.aggregate({
     where: {
       companyId,

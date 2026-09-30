@@ -25,7 +25,7 @@ function body(who: string, direction: "IN" | "OUT", at: string) {
 }
 beforeAll(async () => {
   companyId = (await f.company("OFFLINE")).id;
-  for (const who of ["staff", "peer", "gps", "face", "locked"])
+  for (const who of ["staff", "peer", "gps", "face", "locked", "multi"])
     await f.user(who, companyId, "Employee");
   await f.user("other", (await f.company("OTHER")).id, "Employee");
   await db.employee.updateMany({
@@ -41,6 +41,49 @@ afterAll(async () => {
   await db.$disconnect();
 });
 describe("offline employee attendance", () => {
+  it("keeps first in and last out across multiple punches without duplicating the daily record", async () => {
+    const events = [
+      ["check-in", "IN", "09"],
+      ["check-out", "OUT", "12"],
+      ["check-in", "IN", "13"],
+      ["check-out", "OUT", "17"],
+      ["check-out", "OUT", "18"],
+    ] as const;
+    let id = "";
+    for (const [action, direction, hour] of events) {
+      const result = await call(
+        f,
+        `time/${action}`,
+        "POST",
+        "multi",
+        body("multi", direction, clock(hour)),
+      );
+      expect(result.status, JSON.stringify(result.body)).toBe(200);
+      expect(result.body.data.checkIn).toBe(clock("09"));
+      if (id) expect(result.body.data.id).toBe(id);
+      id = result.body.data.id;
+      if (direction === "OUT")
+        expect(result.body.data.checkOut).toBe(clock(hour));
+      if (hour === "13") expect(result.body.data.checkOut).toBe(clock("12"));
+    }
+    const record = await db.attendance.findUniqueOrThrow({ where: { id } });
+    expect(record.workedMinutes).toBe(540);
+    expect(record.checkOut?.toISOString()).toBe(clock("18"));
+    const punches = await db.attendancePunch.findMany({
+      where: { attendanceId: id },
+      orderBy: { punchedAt: "asc" },
+    });
+    expect(punches.map((p) => p.direction)).toEqual([
+      "IN",
+      "OUT",
+      "IN",
+      "OUT",
+      "OUT",
+    ]);
+    expect(
+      await db.attendance.count({ where: { employeeId: f.employees.multi } }),
+    ).toBe(1);
+  });
   it("prepares an authenticated device without accepting anonymous requests", async () => {
     expect(
       (await call(f, `time/offline-permit?deviceId=${deviceId}`)).status,

@@ -28,12 +28,13 @@ beforeAll(async () => {
   await f.user("admin", a, "Company Admin");
   await f.user("staff", a, "Employee");
   await f.user("peer", a, "Employee");
+  await f.user("multi", a, "Employee");
   await f.user("other", f.companies[1], "Company Admin");
   await db.employee.updateMany({
     where: { id: { in: [f.employees.staff, f.employees.peer] } },
-    data: { faceRequired: true, attendanceMode: "OPEN" },
+    data: { faceRequired: false, attendanceMode: "OPEN" },
   });
-  for (const who of ["staff", "peer"])
+  for (const who of ["staff", "peer", "multi"])
     expect(
       (
         await call(f, "face/enroll", "POST", who, {
@@ -51,6 +52,36 @@ afterAll(async () => {
 });
 
 describe("Phase 5 face attendance", () => {
+  it("preserves first in and latest out across repeated verified punches", async () => {
+    const at = Date.now();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(at);
+      const first = await call(f, "time/face-punch", "POST", "multi", {
+        faceSample: sample("multi-in"),
+      });
+      expect(first.status).toBe(200);
+      for (const minutes of [2, 10]) {
+        vi.setSystemTime(at + minutes * 60000);
+        const out = await call(f, "time/face-punch", "POST", "multi", {
+          faceSample: sample(`multi-out-${minutes}`),
+        });
+        expect(out.status, JSON.stringify(out.body)).toBe(200);
+        expect(out.body.data.checkIn).toBe(first.body.data.checkIn);
+        expect(out.body.data.checkOut).toBe(
+          new Date(at + minutes * 60000).toISOString(),
+        );
+        expect(out.body.data.workedMinutes).toBe(minutes);
+      }
+      expect(
+        await db.attendancePunch.count({
+          where: { employeeId: f.employees.multi },
+        }),
+      ).toBe(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it("locks face scans after repeated failures", async () => {
     accepted = false;
     for (let i = 0; i < 5; i++)
@@ -82,7 +113,7 @@ describe("Phase 5 face attendance", () => {
     expect(replay.body.errorCode).toBe("FACE_REPLAYED");
   });
 
-  it("allows labelled fallback attendance only when the policy permits it", async () => {
+  it("rejects non-face punches and prevents HR from enabling a fallback", async () => {
     // Face required, no fallback: the locked-out employee cannot mark attendance.
     expect((await call(f, "time/check-in", "POST", "staff", {})).status).toBe(
       429,
@@ -103,21 +134,40 @@ describe("Phase 5 face attendance", () => {
           radiusMeters: 200,
         })
       ).status,
-    ).toBe(200);
+    ).toBe(422);
     const summary = await call(f, "time/summary", "GET", "staff");
     expect(summary.body.data.faceRules).toEqual({
       maxFailed: 5,
       lockoutMinutes: 15,
-      fallback: "WEB",
+      fallback: "NONE",
     });
     const fallback = await call(f, "time/check-in", "POST", "staff", {});
-    expect(fallback.status).toBe(200);
-    expect(fallback.body.data.source).toBe("Face fallback");
+    expect(fallback.status).toBe(429);
+    for (const path of [
+      "time/check-in",
+      "time/check-out",
+      "v1/attendance/check-in",
+      "v1/attendance/check-out",
+    ]) {
+      expect((await call(f, path, "POST", "peer", {})).status, path).toBe(422);
+    }
+    expect(summary.body.data.policy.faceAttendanceEnabled).toBe(true);
     expect(
-      await db.attendancePunch.count({
-        where: { attendanceId: fallback.body.data.id, source: "Face fallback" },
-      }),
-    ).toBe(1);
+      (await call(f, "face/status", "GET", "admin")).body.data,
+    ).toMatchObject({ required: true, enrollmentRequired: true });
+    expect((await call(f, "profile", "GET", "admin")).status).toBe(200);
+    expect(
+      (
+        await call(f, "time/policy", "PUT", "admin", {
+          faceAttendanceEnabled: false,
+          gpsTrackingEnabled: false,
+          geofenceEnabled: false,
+          latitude: null,
+          longitude: null,
+          radiusMeters: 200,
+        })
+      ).status,
+    ).toBe(422);
   });
 
   it("gives HR enrolment status, verification logs and profile reset", async () => {

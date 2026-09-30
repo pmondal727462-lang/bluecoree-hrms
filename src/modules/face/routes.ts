@@ -10,12 +10,8 @@ import {
   requirePermission,
   type Context,
 } from "@/modules/auth/service";
-import { enrollFace } from "./service";
-import {
-  canUse,
-  companySubscription,
-  requireFeature,
-} from "@/modules/saas/service";
+import { enrollFace, faceProviderConfigured } from "./service";
+import { requireFeature } from "@/modules/saas/service";
 
 export async function faceStatus(userId: string, companyId: string) {
   const employee = await db.employee.findFirst({
@@ -26,16 +22,10 @@ export async function faceStatus(userId: string, companyId: string) {
       faceProfile: { select: { active: true } },
     },
   });
-  const policy = await db.attendancePolicy.findUnique({ where: { companyId } });
-  const enabled =
-    !!(await companySubscription(companyId)) &&
-    (await canUse(companyId, "face"));
-  const required =
-    enabled &&
-    !!employee &&
-    (!!employee.faceRequired || !!policy?.faceAttendanceEnabled);
+  const required = !!employee;
   return {
     required,
+    providerConfigured: faceProviderConfigured(),
     enrolled: !!employee?.faceProfile?.active,
     enrollmentRequired: required && !employee?.faceProfile?.active,
   };
@@ -150,6 +140,7 @@ export async function faceAdminRoute(
     return {
       items: items.map(({ _count, ...e }) => ({
         ...e,
+        faceRequired: true,
         failedLast24h: _count.faceVerificationLogs,
       })),
       total,

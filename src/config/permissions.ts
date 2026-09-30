@@ -1,3 +1,4 @@
+import { employeePermissions } from "@/lib/employee-access";
 export const permissions = {
   "ai.use": "Use HR Copilot with existing data permissions",
   "ai.configure": "Configure company AI processing and retention",
@@ -211,7 +212,7 @@ export const defaultGrants: Record<
     "fieldtracking.read",
     "ai.performance",
   ],
-  Employee: [...self],
+  Employee: [...employeePermissions],
   Recruiter: [
     "organization.read",
     "ai.recruitment",

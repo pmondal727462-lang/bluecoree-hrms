@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { effectiveAttendanceStatus } from "./single-punch";
+import { attendanceReport } from "./attendance-report";
 import { issueOfflinePermit, verifyOfflinePermit } from "./offline";
 import {
   assertPayrollOpen,
@@ -193,7 +194,7 @@ export async function faceRules(tx: Tx, companyId: string) {
   return {
     maxFailed: p?.faceMaxFailedAttempts ?? 5,
     lockoutMinutes: p?.faceLockoutMinutes ?? 15,
-    fallback: p?.faceFallback ?? "NONE",
+    fallback: "NONE" as const,
   };
 }
 export async function overtimeNeedsApproval(tx: Tx, companyId: string) {
@@ -227,7 +228,7 @@ async function policy(tx: Tx, companyId: string, branchId?: string | null) {
     fieldTrackingEnabled: false,
     fieldTrackingIntervalSeconds: 30,
     fieldTrackingMaxMinutes: 720,
-    faceAttendanceEnabled: false,
+    faceAttendanceEnabled: true,
     faceLivenessRequired: true,
     faceConfidenceThreshold: 0.8,
     overtimeRequiresApproval: true,
@@ -425,6 +426,9 @@ async function summary(ctx: Context) {
     select: { ...employeeSelect, shift: true },
   });
   const assigned = e ? await assignedLocations(db, ctx.companyId, e.id) : [];
+  const currentWorkDate = e
+    ? dayDate((await dayPlan(db, ctx.companyId, e, new Date())).day)
+    : dayDate(today);
   const [p, shifts, holidays, leaveTypes, open, current] = await Promise.all([
     policy(db, ctx.companyId),
     db.shift.findMany({
@@ -449,7 +453,7 @@ async function summary(ctx: Context) {
           where: {
             companyId: ctx.companyId,
             employeeId: e.id,
-            workDate: dayDate(today),
+            workDate: currentWorkDate,
           },
         })
       : null,
@@ -459,7 +463,7 @@ async function summary(ctx: Context) {
     timezone: company.timezone,
     workingDays: company.workingDays,
     employee: e,
-    policy: p,
+    policy: { ...p, faceAttendanceEnabled: true, faceFallback: "NONE" },
     faceRules: await faceRules(db, ctx.companyId),
     employeePolicy: e
       ? {
@@ -537,16 +541,11 @@ async function punch(req: NextRequest, ctx: Context, action: string) {
     const p = await policy(tx, ctx.companyId, e.branchId);
     let faceResult: { confidence: number; livenessPassed: boolean } | null =
       null;
-    const faceNeeded =
-      p.faceAttendanceEnabled || e.faceRequired || action === "face-punch";
+    const faceNeeded = true;
     const rules = faceNeeded ? await faceRules(tx, ctx.companyId) : null;
-    // With a fallback policy, plain check-in/out without a face sample is
-    // allowed and labelled; face scans are still verified when sent.
-    const fallback =
-      faceNeeded &&
-      action !== "face-punch" &&
-      !b.faceSample &&
-      rules?.fallback === "WEB";
+    // Ignore legacy per-company fallback flags: every employee punch must
+    // pass server-side face and liveness verification.
+    const fallback = false;
     const sampleHash = b.faceSample
       ? createHash("sha256").update(b.faceSample).digest("hex")
       : null;
@@ -564,7 +563,7 @@ async function punch(req: NextRequest, ctx: Context, action: string) {
       if (failures >= rules!.maxFailed)
         throw new AppError(
           429,
-          `Too many failed face scans. Try again after ${rules!.lockoutMinutes} minutes${rules!.fallback === "WEB" ? " or check in without face" : " or ask HR"}.`,
+          `Too many failed face scans. Try again after ${rules!.lockoutMinutes} minutes or ask HR.`,
           "FACE_LOCKED",
         );
       if (!b.faceSample)
@@ -719,6 +718,15 @@ async function punch(req: NextRequest, ctx: Context, action: string) {
       viaFace = true;
     }
     let saved;
+    // Keep the first IN and extend the daily record with each later OUT.
+    const todayRecord = await tx.attendance.findFirst({
+      where: {
+        companyId: ctx.companyId,
+        employeeId: e.id,
+        workDate: dayDate(plan.day),
+      },
+    });
+    if (action === "check-out") open ??= todayRecord;
     if (
       b.offline &&
       b.offline.direction !== (action === "check-in" ? "IN" : "OUT")
@@ -737,42 +745,53 @@ async function punch(req: NextRequest, ctx: Context, action: string) {
             ? "Mobile"
             : "Web");
     if (action === "check-in") {
-      if (open) fail("You are already checked in. Check out first.");
-      const snapshot = {
-        ...shiftSnapshot(now, plan.timezone, plan.shift, plan.day),
-        ...(plan.offDay ? { lateMinutes: 0 } : {}),
-      };
-      if (snapshot.workDate < e.joinedAt)
-        fail("Attendance cannot precede your joining date.");
-      if (await overlapsLeave(tx, ctx.companyId, e.id, snapshot.workDate))
+      if (open && dayKey(open.workDate) !== plan.day)
         fail(
-          "You have approved leave for this date. Contact HR to cancel it first.",
+          "Previous workday is still open. Check out or ask HR to correct it first.",
         );
-      if (
-        await attendanceConflict(
-          tx,
-          ctx.companyId,
-          e.id,
-          snapshot.workDate,
-          snapshot.workDate,
+      if (todayRecord) {
+        if (now <= (todayRecord.checkOut ?? todayRecord.checkIn))
+          fail(
+            "The punch must be later than the last recorded attendance time.",
+          );
+        saved = todayRecord;
+      } else {
+        const snapshot = {
+          ...shiftSnapshot(now, plan.timezone, plan.shift, plan.day),
+          ...(plan.offDay ? { lateMinutes: 0 } : {}),
+        };
+        if (snapshot.workDate < e.joinedAt)
+          fail("Attendance cannot precede your joining date.");
+        if (await overlapsLeave(tx, ctx.companyId, e.id, snapshot.workDate))
+          fail(
+            "You have approved leave for this date. Contact HR to cancel it first.",
+          );
+        if (
+          await attendanceConflict(
+            tx,
+            ctx.companyId,
+            e.id,
+            snapshot.workDate,
+            snapshot.workDate,
+          )
         )
-      )
-        fail(
-          "Attendance is already recorded for this work date. Contact HR for a correction.",
-        );
-      saved = await tx.attendance.create({
-        data: {
-          companyId: ctx.companyId,
-          employeeId: e.id,
-          checkIn: now,
-          source,
-          offDay: plan.offDay,
-          ...snapshot,
-          ...(recordedLocation
-            ? { checkInLocation: recordedLocation as Prisma.InputJsonValue }
-            : {}),
-        },
-      });
+          fail(
+            "Attendance is already recorded for this work date. Contact HR for a correction.",
+          );
+        saved = await tx.attendance.create({
+          data: {
+            companyId: ctx.companyId,
+            employeeId: e.id,
+            checkIn: now,
+            source,
+            offDay: plan.offDay,
+            ...snapshot,
+            ...(recordedLocation
+              ? { checkInLocation: recordedLocation as Prisma.InputJsonValue }
+              : {}),
+          },
+        });
+      }
     } else {
       if (!open) return fail("You are not checked in.");
       await assertPayrollOpen(tx, ctx.companyId, open.workDate);
@@ -2459,7 +2478,11 @@ async function configure(
   return mutate(ctx, async (tx) => {
     let result: { id?: string };
     if (resource === "policy" && req.method === "PUT") {
-      const b = policySchema.parse(raw);
+      const b = {
+        ...policySchema.parse(raw),
+        faceAttendanceEnabled: true,
+        faceFallback: "NONE",
+      };
       await tx.attendancePolicy.upsert({
         where: { companyId: ctx.companyId },
         create: { companyId: ctx.companyId, ...b },
@@ -2589,7 +2612,8 @@ export async function timeRoute(
     id = path[2],
     method = req.method;
   if (path.length > 3) return fail("Endpoint not found.", 404);
-  if (resource === "rosters") await requireFeature(ctx.companyId, "workplanning");
+  if (resource === "rosters")
+    await requireFeature(ctx.companyId, "workplanning");
   const leaveAdmin = await leaveAdminRoute(req, ctx, resource, id);
   if (leaveAdmin !== null) return leaveAdmin;
   if (!id && resource === "summary" && method === "GET") return summary(ctx);
@@ -2607,7 +2631,7 @@ export async function timeRoute(
       name: `${e.firstName} ${e.lastName}`,
       employeeCode: e.employeeCode,
       timezone: s.timezone,
-      faceRequired: !!(s.policy.faceAttendanceEnabled || e.faceRequired),
+      faceRequired: true,
       gpsRequired: !!(
         s.employeePolicy.geofenceEnabled || s.employeePolicy.gpsTrackingEnabled
       ),
@@ -2631,6 +2655,8 @@ export async function timeRoute(
     return fieldTracking(req, ctx, "stop", id);
   if (!id && resource === "attendance" && method === "GET")
     return listAttendance(req, ctx);
+  if (!id && resource === "attendance-report" && method === "GET")
+    return attendanceReport(req, ctx);
   if (!id && resource === "roster" && method === "GET") return roster(req, ctx);
   if (!id && resource === "rosters" && method === "GET")
     return listRosters(req, ctx);

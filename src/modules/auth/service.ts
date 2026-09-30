@@ -28,6 +28,7 @@ import {
   setupSchema,
 } from "@/modules/shared/validators";
 import { z } from "zod";
+import { effectivePermissions } from "@/lib/employee-access";
 
 export type Context = {
   userId: string;
@@ -179,10 +180,11 @@ export async function authenticate(req: NextRequest): Promise<Context> {
       where: { id: session.id },
       data: { lastUsedAt: new Date(now) },
     });
-  const permissions = u.role.permissions.map((p) => p.permissionKey);
+  const permissions = effectivePermissions(
+    { roleName: u.role.name, isSuperAdmin: u.isSuperAdmin },
+    u.role.permissions.map((p) => p.permissionKey),
+  );
   const gate = securityGate(policy, u, roleTier(permissions, u.isSuperAdmin));
-  const { faceStatus } = await import("@/modules/face/routes");
-  const face = await faceStatus(u.id, u.companyId);
   const route = req.nextUrl.pathname;
   // Setup routes stay reachable while a required setup step is pending.
   const setupRoutes = [
@@ -212,12 +214,6 @@ export async function authenticate(req: NextRequest): Promise<Context> {
         428,
         "Your company requires two-factor authentication. Set it up to continue.",
         "MFA_SETUP_REQUIRED",
-      );
-    if (face.enrollmentRequired)
-      throw new AppError(
-        428,
-        "Register your face before using employee services.",
-        "FACE_ENROLLMENT_REQUIRED",
       );
   }
   return {

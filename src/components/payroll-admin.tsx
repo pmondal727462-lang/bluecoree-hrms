@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, Plus } from "lucide-react";
 import { api } from "@/lib/api-client";
@@ -9,10 +9,18 @@ import { Dialog } from "./ui/dialog";
 import { RecordForm } from "./record-form";
 import { Confirm, Heading, Table, when, type Notify } from "./platform";
 import { Loans, StatutoryRules } from "./payroll-extras";
+import { salaryPeriod } from "@/modules/payroll/period";
+import { formatCompanyDate } from "@/lib/company-date";
+import {
+  SalaryPeriodSettings,
+  useSalaryPeriodPolicy,
+} from "./salary-period-settings";
 
 type Run = {
   id: string;
   period: string;
+  periodStart: string | null;
+  periodEnd: string | null;
   status: string;
   processedAt: string | null;
   submittedBy: string | null;
@@ -110,6 +118,7 @@ export function PayrollPage({ me, notify }: { me: Me; notify: Notify }) {
       <div className="section-tabs">
         {[
           ["runs", "Payroll runs"],
+          ["period-policy", "Salary period policy"],
           ["structures", "Salary structures"],
           ["loans", "Loans & advances"],
           ["statutory", "Statutory settings"],
@@ -126,6 +135,8 @@ export function PayrollPage({ me, notify }: { me: Me; notify: Notify }) {
       </div>
       {tab === "runs" ? (
         <Runs manage={manage} approve={approve} me={me} notify={notify} />
+      ) : tab === "period-policy" ? (
+        <SalaryPeriodSettings manage={manage} notify={notify} me={me} />
       ) : tab === "structures" ? (
         <Structures manage={manage} notify={notify} />
       ) : tab === "loans" ? (
@@ -158,6 +169,14 @@ function Runs({
   const [period, setPeriod] = useState(new Date().toISOString().slice(0, 7)),
     [open, setOpen] = useState<string | null>(null),
     [busy, setBusy] = useState(false);
+  useEffect(() => {
+    const selected = new URLSearchParams(window.location.search).get("period");
+    if (selected && /^\d{4}-(0[1-9]|1[0-2])$/.test(selected))
+      setPeriod(selected);
+  }, []);
+  const policy = useSalaryPeriodPolicy();
+  const dates =
+    period && policy.data ? salaryPeriod(period, policy.data) : null;
   const refresh = () => client.invalidateQueries({ queryKey: ["payroll"] });
   return (
     <>
@@ -172,7 +191,7 @@ function Runs({
             />
           </label>
           <Button
-            disabled={busy || !period}
+            disabled={busy || !period || !policy.data}
             onClick={async () => {
               setBusy(true);
               try {
@@ -193,12 +212,29 @@ function Runs({
             <Plus />
             Calculate draft payroll
           </Button>
+          {policy.error && <p className="error">{policy.error.message}</p>}
+          {dates && (
+            <p className="text-sm font-semibold">
+              Salary period:{" "}
+              {formatCompanyDate(
+                dates.start.toISOString(),
+                me.company.dateFormat,
+              )}{" "}
+              to{" "}
+              {formatCompanyDate(
+                dates.end.toISOString(),
+                me.company.dateFormat,
+              )}{" "}
+              · {dates.days} days
+            </p>
+          )}
           <p className="muted text-xs max-w-xl">
             Unpaid leave and days before joining reduce pay automatically;
             absences too when enabled in Statutory settings. Approved overtime,
             encashed leave, loan instalments and expense claims are included. A
             run is submitted for review, approved by another person, then
-            processed; attendance and leave for the month lock on submission.
+            processed; attendance and leave for this salary period lock on
+            submission.
           </p>
         </section>
       )}
@@ -206,6 +242,7 @@ function Runs({
         <Table
           headers={[
             "Month",
+            "Salary period",
             "Status",
             "Employees",
             "Gross",
@@ -219,6 +256,9 @@ function Runs({
           empty="No payroll runs yet."
           rows={(runs.data ?? []).map((r) => [
             r.period,
+            r.periodStart && r.periodEnd
+              ? `${formatCompanyDate(r.periodStart, me.company.dateFormat)} – ${formatCompanyDate(r.periodEnd, me.company.dateFormat)}`
+              : "Calendar month",
             <span
               key="s"
               className={`badge ${statusBadge[r.status]?.[1] ?? "amber"}`}
@@ -294,13 +334,19 @@ function RunDetail({
   const draft = r.status === "DRAFT";
   return (
     <div className="space-y-4">
+      {r.periodStart && r.periodEnd && (
+        <p className="font-semibold">
+          {formatCompanyDate(r.periodStart, me.company.dateFormat)} to{" "}
+          {formatCompanyDate(r.periodEnd, me.company.dateFormat)} (inclusive)
+        </p>
+      )}
       <p className="text-sm">
         {r.period} ·{" "}
         {draft
           ? "Draft — values can still change"
           : r.status === "PROCESSED"
             ? "Processed and locked"
-            : `${statusBadge[r.status]?.[0]} — attendance and leave for this month are locked`}
+            : `${statusBadge[r.status]?.[0]} — attendance and leave for this salary period are locked`}
         {r.reviewNote && ` · Reviewer note: ${r.reviewNote}`}
         {!!r.totals?.missingStructures &&
           ` · ${r.totals.missingStructures} active employees have no salary structure and are not included`}

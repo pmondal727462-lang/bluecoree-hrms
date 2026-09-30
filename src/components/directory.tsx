@@ -239,16 +239,6 @@ export function Directory({
         ],
       },
       {
-        key: "faceRequired",
-        label: "Require face verification for attendance",
-        type: "select",
-        required: true,
-        options: [
-          { value: "true", label: "Required" },
-          { value: "false", label: "Not required" },
-        ],
-      },
-      {
         key: "employmentType",
         label: "Employment type",
         type: "select",
@@ -321,7 +311,7 @@ export function Directory({
           geofenceEnabled: "false",
           attendanceMode: "DEFAULT",
           fieldTrackingAllowed: "false",
-          faceRequired: "false",
+          faceRequired: "true",
           radiusMeters: 200,
           probationDays: 90,
           noticeDays: 30,
@@ -351,8 +341,7 @@ export function Directory({
     if (module === "employees") {
       if ("fieldTrackingAllowed" in values)
         body.fieldTrackingAllowed = values.fieldTrackingAllowed === "true";
-      if ("faceRequired" in values)
-        body.faceRequired = values.faceRequired === "true";
+      if ("faceRequired" in values) body.faceRequired = true;
       for (const group of ["address", "emergencyContact", "sensitive"]) {
         const entries = Object.entries(values).filter(([key]) =>
           key.startsWith(`${group}_`),

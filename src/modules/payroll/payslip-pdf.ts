@@ -116,7 +116,7 @@ export async function payslipPdf(ctx: Context, id: string) {
   const b = (slip.breakdown ?? {}) as NonNullable<Breakdown>;
 
   const doc = await PDFDocument.create();
-  doc.setTitle(`Payslip ${monthName(slip.periodStart)}`);
+  doc.setTitle(`Payslip ${monthName(slip.periodEnd)}`);
   const page = doc.addPage([595, 842]); // A4 portrait
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -171,7 +171,7 @@ export async function payslipPdf(ctx: Context, id: string) {
   if (company.address)
     draw(company.address.slice(0, 110), textX, 8, font, grey);
   y -= 26;
-  draw(`Payslip for ${monthName(slip.periodStart)}`, m, 12, bold);
+  draw(`Payslip for ${monthName(slip.periodEnd)}`, m, 12, bold);
   y -= 8;
   page.drawLine({
     start: { x: m, y },
@@ -305,7 +305,7 @@ export async function payslipPdf(ctx: Context, id: string) {
   y = m + 10;
   draw(footer.slice(0, 140), m, 7.5, font, grey);
 
-  const period = slip.periodStart.toISOString().slice(0, 7);
+  const period = slip.periodEnd.toISOString().slice(0, 7);
   return new NextResponse(new Uint8Array(await doc.save()), {
     headers: {
       "content-type": "application/pdf",

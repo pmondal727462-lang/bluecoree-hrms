@@ -3,7 +3,15 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { Clock3, CalendarDays, Download, MapPin, Plus } from "lucide-react";
-import { api } from "@/lib/api-client";
+import { api, downloadApiFile } from "@/lib/api-client";
+import { FaceRegistration } from "./face-registration";
+import { attendanceExportRows } from "@/lib/attendance-export";
+import {
+  companyDateTimeInput,
+  companyDateTimeToIso,
+  formatCompanyDate,
+  formatCompanyDateTime,
+} from "@/lib/company-date";
 import type { Me } from "@/types/ui";
 import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
@@ -193,16 +201,7 @@ const dateOnly = (value: string) => value.slice(0, 10);
 const clockTime = (minute: number) =>
   `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
 const minutes = (value: number) => `${Math.floor(value / 60)}h ${value % 60}m`;
-const timestamp = (value: string | null, timezone: string) =>
-  value
-    ? new Date(value).toLocaleString("en-IN", {
-        timeZone: timezone,
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    : "—";
+const timestamp = formatCompanyDateTime;
 const localClock = (value: string, timezone: string) =>
   new Date(value).toLocaleTimeString("en-GB", {
     timeZone: timezone,
@@ -214,8 +213,7 @@ const timeValue = (value: FormDataEntryValue | null) => {
   const [h, m] = String(value).split(":").map(Number);
   return h * 60 + m;
 };
-const faceMode = (s: Summary) =>
-  !!(s.policy.faceAttendanceEnabled || s.employee?.faceRequired);
+const faceMode = (s: Summary) => !!s.employee;
 // Records a punch. With face attendance the server decides: the first
 // verified scan of the work day checks in, later scans move the check-out.
 async function markAttendance(s: Summary, faceSample?: string) {
@@ -224,7 +222,7 @@ async function markAttendance(s: Summary, faceSample?: string) {
     location = await currentLocation();
   const face = faceMode(s);
   return api<Attendance>(
-    `time/${face ? "face-punch" : s.open ? "check-out" : "check-in"}`,
+    `time/${face ? "face-punch" : s.open || s.current ? "check-out" : "check-in"}`,
     {
       method: "POST",
       body: JSON.stringify({
@@ -236,11 +234,10 @@ async function markAttendance(s: Summary, faceSample?: string) {
 }
 const punchedText = (saved: Attendance) =>
   saved.checkOut
-    ? "Check-out updated to your latest verified scan."
+    ? "Latest check-out saved. Your first check-in is unchanged."
     : "Checked in successfully.";
-// Camera scan for face attendance. It starts by itself until today's
-// check-in exists; afterwards one click starts a scan that updates the
-// check-out, so simply opening a page never moves it.
+// Additional attendance scans are explicitly started here. The shared
+// employee login flow handles the automatic scan once per login session.
 function FaceScan({
   s,
   onDone,
@@ -251,15 +248,12 @@ function FaceScan({
   onError: (error: Error) => void;
 }) {
   const [round, setRound] = useState(0);
-  const [busy, setBusy] = useState(false);
   const checkedIn = !!(s.open || s.current);
-  // Company fallback policy: web/GPS attendance without a face scan.
-  const fallback = s.faceRules?.fallback === "WEB" && (!checkedIn || !!s.open);
   return (
     <div className="space-y-2">
       <AutoFaceScan
         key={round}
-        autoStart={!checkedIn && round === 0}
+        autoStart={false}
         label={
           checkedIn ? "Scan face to update check-out" : "Scan face to check in"
         }
@@ -275,39 +269,6 @@ function FaceScan({
           }
         }}
       />
-      {fallback && (
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={busy}
-          onClick={async () => {
-            setBusy(true);
-            try {
-              let location;
-              if (
-                s.employeePolicy.geofenceEnabled ||
-                s.employeePolicy.gpsTrackingEnabled
-              )
-                location = await currentLocation();
-              const saved = await api<Attendance>(
-                `time/${s.open ? "check-out" : "check-in"}`,
-                {
-                  method: "POST",
-                  body: JSON.stringify(location ? { location } : {}),
-                },
-              );
-              await onDone(saved);
-              setRound((r) => r + 1);
-            } catch (e) {
-              onError(e as Error);
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          {s.open ? "Check out without face" : "Check in without face"}
-        </Button>
-      )}
     </div>
   );
 }
@@ -323,6 +284,8 @@ export function FaceAttendanceCard({ me, notify }: Props) {
     !faceMode(s)
   )
     return null;
+  if ((me as Me & { faceEnrollmentRequired?: boolean }).faceEnrollmentRequired)
+    return <FaceRegistration />;
   return (
     <section className="card p-6 mb-6 flex flex-wrap gap-6 items-start justify-between">
       <div>
@@ -1099,7 +1062,8 @@ export function AttendancePage({
   me,
   notify,
   onAskReport,
-}: Props & { onAskReport?: () => void }) {
+  punchOnly = false,
+}: Props & { onAskReport?: () => void; punchOnly?: boolean }) {
   const client = useQueryClient(),
     summary = useSummary();
   const canRead = me.permissions.includes("attendance.read"),
@@ -1118,6 +1082,13 @@ export function AttendancePage({
     [geoRecord, setGeoRecord] = useState<Attendance | null>(null),
     [importing, setImporting] = useState(false),
     [missing, setMissing] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [excelOpen, setExcelOpen] = useState(false);
+  const [excelMode, setExcelMode] = useState("range");
+  const [excelMonth, setExcelMonth] = useState("");
+  const [excelFrom, setExcelFrom] = useState("");
+  const [excelTo, setExcelTo] = useState("");
+  const [excelBusy, setExcelBusy] = useState(false);
   const s = summary.data,
     daily = view === "daily",
     requests = view === "requests",
@@ -1141,6 +1112,7 @@ export function AttendancePage({
         `time/${daily ? "roster" : "attendance"}?${query}`,
       ),
     enabled:
+      !punchOnly &&
       !!s &&
       !requests &&
       !manual &&
@@ -1152,6 +1124,82 @@ export function AttendancePage({
   const refresh = async () => {
     await client.invalidateQueries({ queryKey: ["time"] });
   };
+  async function exportReport() {
+    if (!s || exporting) return;
+    setExporting(true);
+    setActionError(null);
+    try {
+      const filters = new URLSearchParams(query);
+      filters.set("from", from || s.today.slice(0, 7) + "-01");
+      filters.set("to", to || s.today);
+      const records = await attendanceExportRows<Attendance & RosterRow>(
+        daily ? "roster" : "attendance",
+        filters,
+      );
+      if (!records.length) {
+        notify("No attendance records match the selected filters.");
+        return;
+      }
+      const localTime = (value: string | null) =>
+        value
+          ? formatCompanyDateTime(value, s.timezone, me.company.dateFormat)
+          : "";
+      const rows = daily
+        ? [
+            [
+              "Employee code",
+              "Name",
+              "Date",
+              "Status",
+              `Check in (${s.timezone})`,
+              `Check out (${s.timezone})`,
+            ],
+            ...records.map((r) => [
+              r.employeeCode,
+              personName(r),
+              formatCompanyDate(date || s.today, me.company.dateFormat),
+              r.status,
+              localTime(r.attendance?.checkIn ?? null),
+              localTime(r.attendance?.checkOut ?? null),
+            ]),
+          ]
+        : [
+            [
+              "Employee code",
+              "Name",
+              "Date",
+              "Status",
+              `Check in (${s.timezone})`,
+              `Check out (${s.timezone})`,
+              "Worked minutes",
+              "Late minutes",
+              "Overtime minutes",
+              "Source",
+            ],
+            ...records.map((r) => [
+              r.employee?.employeeCode ?? "",
+              r.employee ? personName(r.employee) : "",
+              formatCompanyDate(r.workDate, me.company.dateFormat),
+              r.status,
+              localTime(r.checkIn),
+              localTime(r.checkOut),
+              String(r.workedMinutes),
+              String(r.lateMinutes),
+              String(r.overtimeMinutes),
+              r.source,
+            ]),
+          ];
+      downloadCsv(
+        rows,
+        `attendance-${daily ? date || s.today : `${filters.get("from")}-to-${filters.get("to")}`}.csv`,
+      );
+      notify(`Downloaded ${records.length} attendance records.`);
+    } catch (error) {
+      setActionError(error as Error);
+    } finally {
+      setExporting(false);
+    }
+  }
   async function punch() {
     if (!s) return;
     setBusy(true);
@@ -1173,7 +1221,13 @@ export function AttendancePage({
       <div className="page-heading">
         <div>
           <div className="eyebrow mb-3">Time & presence</div>
-          <h1>Attendance</h1>
+          <h1>
+            {punchOnly
+              ? "Check in / Check out"
+              : canRead
+                ? "Attendance"
+                : "My attendance"}
+          </h1>
           {me.permissions.includes("ai.reports") && onAskReport && (
             <button
               type="button"
@@ -1188,35 +1242,66 @@ export function AttendancePage({
             {timezone}
           </p>
         </div>
-        {canManage && (
-          <div className="flex gap-2 flex-wrap">
-            {me.subscription?.plan.features.includes("biometric") && (
-              <Button variant="outline" onClick={() => setImporting(true)}>
-                Import device CSV
-              </Button>
-            )}
-            <Button
-              onClick={() => {
-                setView("manual");
-                setPage(1);
-              }}
-            >
-              <Plus />
-              Add attendance
-            </Button>
-          </div>
-        )}
+        {!punchOnly &&
+          (canManage || daily || view === "company" || view === "own") && (
+            <div className="flex gap-2 flex-wrap">
+              {(daily || view === "company" || view === "own") && (
+                <Button
+                  variant="outline"
+                  disabled={view === "own" && !s.employee}
+                  onClick={() => {
+                    setExcelMonth(s.today.slice(0, 7));
+                    setExcelFrom(from || s.today.slice(0, 7) + "-01");
+                    setExcelTo(to || s.today);
+                    setExcelOpen(true);
+                  }}
+                >
+                  <Download /> Download Excel report
+                </Button>
+              )}
+              {(daily || view === "company" || view === "own") && (
+                <Button
+                  variant="outline"
+                  disabled={exporting || (view === "own" && !s.employee)}
+                  onClick={exportReport}
+                >
+                  <Download />{" "}
+                  {exporting ? "Preparing report…" : "Download report (CSV)"}
+                </Button>
+              )}
+              {canManage &&
+                me.subscription?.plan.features.includes("biometric") && (
+                  <Button variant="outline" onClick={() => setImporting(true)}>
+                    Import device CSV
+                  </Button>
+                )}
+              {canManage && (
+                <Button
+                  onClick={() => {
+                    setView("manual");
+                    setPage(1);
+                  }}
+                >
+                  <Plus />
+                  Add attendance
+                </Button>
+              )}
+            </div>
+          )}
       </div>
       <Notice error={actionError} />
       {canSelf && (
         <section className="card p-6 mb-6 flex flex-wrap gap-6 items-center justify-between">
           <div>
-            <p className="eyebrow mb-2">My attendance · {s.today}</p>
+            <p className="eyebrow mb-2">
+              My attendance ·{" "}
+              {formatCompanyDate(s.today, me.company.dateFormat)}
+            </p>
             <h2 className="text-lg font-semibold">
               {s.open
                 ? `Checked in at ${timestamp(s.open.checkIn, timezone)}`
                 : s.current?.checkOut
-                  ? "Today’s attendance is complete"
+                  ? "Today’s latest check-out is recorded"
                   : "Ready to start your day?"}
             </h2>
             <p className="muted mt-2">
@@ -1238,8 +1323,20 @@ export function AttendancePage({
                 close it.
               </p>
             )}
+            {!s.open && s.current?.checkOut && (
+              <p className="text-sm mt-2">
+                Checked in: {timestamp(s.current.checkIn, timezone)}. Checked
+                out: {timestamp(s.current.checkOut, timezone)}. You can punch
+                again to update your latest check-out. Your first check-in stays
+                unchanged; working time is calculated from first in to last out,
+                less applicable breaks.
+              </p>
+            )}
           </div>
-          {faceMode(s) && s.employee ? (
+          {(me as Me & { faceEnrollmentRequired?: boolean })
+            .faceEnrollmentRequired ? (
+            <FaceRegistration />
+          ) : faceMode(s) && s.employee ? (
             <div>
               <FaceScan
                 s={s}
@@ -1256,12 +1353,15 @@ export function AttendancePage({
               </p>
             </div>
           ) : (
-            <Button
-              disabled={busy || !s.employee || (!s.open && !!s.current)}
-              onClick={punch}
-            >
+            <Button disabled={busy || !s.employee} onClick={punch}>
               <Clock3 />
-              {busy ? "Please wait…" : s.open ? "Check out" : "Check in"}
+              {busy
+                ? "Please wait…"
+                : s.open
+                  ? "Check out"
+                  : s.current
+                    ? "Update check-out"
+                    : "Check in"}
             </Button>
           )}
           <Button
@@ -1282,40 +1382,43 @@ export function AttendancePage({
         employeeId={s.employee?.id}
         intervalSeconds={s.policy.fieldTrackingIntervalSeconds}
       />
-      <div className="section-tabs">
-        {[
-          ...(canRead
-            ? [
-                ["daily", "Daily register"],
-                ["company", "Company records"],
-              ]
-            : []),
-          ...(canSelf ? [["own", "My records"]] : []),
-          ...(canSelf || canManage ? [["requests", "Missed punches"]] : []),
-          ...(canManage ? [["manual", "Manual attendance"]] : []),
-          ...(canRead && me.subscription?.plan.features.includes("workplanning")
-            ? [["rosters", "Rosters"]]
-            : []),
-          ...(canRead && me.subscription?.plan.features.includes("biometric")
-            ? [["devices", "Devices"]]
-            : []),
-          ...(canManage && me.subscription?.plan.features.includes("face")
-            ? [["face", "Face"]]
-            : []),
-        ].map(([key, label]) => (
-          <button
-            key={key}
-            className={view === key ? "active" : ""}
-            onClick={() => {
-              setView(key);
-              setPage(1);
-            }}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      {face ? (
+      {!punchOnly && (
+        <div className="section-tabs">
+          {[
+            ...(canRead
+              ? [
+                  ["daily", "Daily register"],
+                  ["company", "Company records"],
+                ]
+              : []),
+            ...(canSelf ? [["own", "My records"]] : []),
+            ...(canSelf || canManage ? [["requests", "Missed punches"]] : []),
+            ...(canManage ? [["manual", "Manual attendance"]] : []),
+            ...(canRead &&
+            me.subscription?.plan.features.includes("workplanning")
+              ? [["rosters", "Rosters"]]
+              : []),
+            ...(canRead && me.subscription?.plan.features.includes("biometric")
+              ? [["devices", "Devices"]]
+              : []),
+            ...(canManage && me.subscription?.plan.features.includes("face")
+              ? [["face", "Face"]]
+              : []),
+          ].map(([key, label]) => (
+            <button
+              key={key}
+              className={view === key ? "active" : ""}
+              onClick={() => {
+                setView(key);
+                setPage(1);
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+      {punchOnly ? null : face ? (
         <FaceAdmin notify={notify} />
       ) : devices ? (
         <BiometricDevices me={me} notify={notify} />
@@ -1407,58 +1510,6 @@ export function AttendancePage({
                   />
                 </label>
               )}
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!list.data?.items.length}
-                onClick={() => {
-                  const rows = daily
-                    ? [
-                        [
-                          "Employee code",
-                          "Name",
-                          "Date",
-                          "Status",
-                          "Check in",
-                          "Check out",
-                        ],
-                        ...(list.data?.items ?? []).map((r) => [
-                          r.employeeCode,
-                          personName(r),
-                          date || s.today,
-                          r.status,
-                          r.attendance?.checkIn ?? "",
-                          r.attendance?.checkOut ?? "",
-                        ]),
-                      ]
-                    : [
-                        [
-                          "Employee code",
-                          "Date",
-                          "Check in",
-                          "Check out",
-                          "Worked minutes",
-                          "Late minutes",
-                          "Overtime minutes",
-                          "Source",
-                        ],
-                        ...(list.data?.items ?? []).map((r) => [
-                          r.employee?.employeeCode ?? "",
-                          dateOnly(r.workDate),
-                          r.checkIn,
-                          r.checkOut ?? "",
-                          String(r.workedMinutes),
-                          String(r.lateMinutes),
-                          String(r.overtimeMinutes),
-                          r.source,
-                        ]),
-                      ];
-                  downloadCsv(rows, `attendance-page-${page}.csv`);
-                }}
-              >
-                <Download />
-                Export this page
-              </Button>
             </div>
             <Notice error={list.error} />
             <div className="table-scroll">
@@ -1520,7 +1571,12 @@ export function AttendancePage({
                           </>
                         ) : (
                           <>
-                            <td>{dateOnly(row.workDate)}</td>
+                            <td>
+                              {formatCompanyDate(
+                                row.workDate,
+                                me.company.dateFormat,
+                              )}
+                            </td>
                             <td>
                               <span
                                 className={`badge ${["PRESENT"].includes(row.status) && row.checkOut ? "positive" : ["HALF_DAY", "SHORT", "PENDING_REVIEW"].includes(row.status) ? "amber" : ""}`}
@@ -1530,8 +1586,20 @@ export function AttendancePage({
                             </td>
                           </>
                         )}
-                        <td>{timestamp(a?.checkIn ?? null, timezone)}</td>
-                        <td>{timestamp(a?.checkOut ?? null, timezone)}</td>
+                        <td className="whitespace-nowrap">
+                          {timestamp(
+                            a?.checkIn ?? null,
+                            timezone,
+                            me.company.dateFormat,
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap">
+                          {timestamp(
+                            a?.checkOut ?? null,
+                            timezone,
+                            me.company.dateFormat,
+                          )}
+                        </td>
                         <td>{a?.checkOut ? minutes(a.workedMinutes) : "—"}</td>
                         {!daily && (
                           <>
@@ -1650,6 +1718,104 @@ export function AttendancePage({
         </>
       )}
       <Dialog
+        open={excelOpen}
+        onOpenChange={(open) => {
+          if (!excelBusy) setExcelOpen(open);
+        }}
+        title="Download attendance report"
+        description="Branch sheets and department groups, with Status, In, Out and Total rows for each employee, matching your Excel format."
+      >
+        <div className="space-y-4">
+          <p className="muted text-sm">
+            The report uses the selected work location and employee search. Bank
+            and salary columns follow your access permissions.
+          </p>
+          <label className="block">
+            Report period
+            <select
+              value={excelMode}
+              onChange={(e) => setExcelMode(e.target.value)}
+              disabled={excelBusy}
+            >
+              <option value="range">Choose dates</option>
+              <option value="policy">Company salary period</option>
+            </select>
+          </label>
+          {excelMode === "policy" ? (
+            <label className="block">
+              Payroll month
+              <input
+                type="month"
+                value={excelMonth}
+                onChange={(e) => setExcelMonth(e.target.value)}
+                disabled={excelBusy}
+              />
+            </label>
+          ) : (
+            <div className="form-grid">
+              <label>
+                From
+                <input
+                  type="date"
+                  value={excelFrom}
+                  onChange={(e) => setExcelFrom(e.target.value)}
+                  disabled={excelBusy}
+                />
+              </label>
+              <label>
+                To
+                <input
+                  type="date"
+                  value={excelTo}
+                  onChange={(e) => setExcelTo(e.target.value)}
+                  disabled={excelBusy}
+                />
+              </label>
+            </div>
+          )}
+          {excelMode === "policy" && (
+            <p className="muted text-sm">
+              Uses the saved payroll run dates when available, otherwise the
+              current company salary period policy.
+            </p>
+          )}
+          <Button
+            disabled={
+              excelBusy ||
+              (excelMode === "policy" ? !excelMonth : !excelFrom || !excelTo)
+            }
+            onClick={async () => {
+              setExcelBusy(true);
+              try {
+                const q = new URLSearchParams({
+                  scope: view === "own" ? "own" : "company",
+                  search,
+                });
+                if (branchId && view !== "own") q.set("branchId", branchId);
+                if (excelMode === "policy") q.set("period", excelMonth);
+                else {
+                  q.set("from", excelFrom);
+                  q.set("to", excelTo);
+                }
+                await downloadApiFile(
+                  `time/attendance-report?${q}`,
+                  `attendance-${excelMode === "policy" ? excelMonth : `${excelFrom}-to-${excelTo}`}.xlsx`,
+                );
+                notify("Excel attendance report downloaded.");
+                setExcelOpen(false);
+              } catch (e) {
+                notify((e as Error).message);
+              } finally {
+                setExcelBusy(false);
+              }
+            }}
+          >
+            <Download />
+            {excelBusy ? "Preparing Excel…" : "Download Excel"}
+          </Button>
+        </div>
+      </Dialog>
+      <Dialog
         open={missing}
         onOpenChange={setMissing}
         title="Missed punch request"
@@ -1716,7 +1882,7 @@ export function AttendancePage({
         open={!!edit}
         onOpenChange={(v) => !v && setEdit(null)}
         title={edit === "new" ? "Add attendance" : "Correct attendance"}
-        description="Enter actual times with an explicit time-zone offset, for example 2026-09-23T09:00:00+05:30. A reason is required and recorded in the audit trail."
+        description={`Enter actual dates and times in ${timezone}. For an overnight shift, select the next day's check-out date. A reason is required.`}
       >
         {edit && (
           <SaveForm
@@ -1728,8 +1894,14 @@ export function AttendancePage({
                   method: edit === "new" ? "POST" : "PUT",
                   body: JSON.stringify({
                     employeeId: f.get("employeeId"),
-                    checkIn: f.get("checkIn"),
-                    checkOut: f.get("checkOut"),
+                    checkIn: companyDateTimeToIso(
+                      String(f.get("checkIn")),
+                      timezone,
+                    ),
+                    checkOut: companyDateTimeToIso(
+                      String(f.get("checkOut")),
+                      timezone,
+                    ),
                     reason: f.get("reason"),
                   }),
                 },
@@ -1755,18 +1927,28 @@ export function AttendancePage({
               Check in *
               <input
                 name="checkIn"
+                type="datetime-local"
+                step="1"
                 required
-                defaultValue={edit === "new" ? "" : edit.checkIn}
-                placeholder="YYYY-MM-DDTHH:mm:ss+05:30"
+                defaultValue={
+                  edit === "new"
+                    ? ""
+                    : companyDateTimeInput(edit.checkIn, timezone)
+                }
               />
             </label>
             <label>
               Check out *
               <input
                 name="checkOut"
+                type="datetime-local"
+                step="1"
                 required
-                defaultValue={edit === "new" ? "" : (edit.checkOut ?? "")}
-                placeholder="YYYY-MM-DDTHH:mm:ss+05:30"
+                defaultValue={
+                  edit === "new" || !edit.checkOut
+                    ? ""
+                    : companyDateTimeInput(edit.checkOut, timezone)
+                }
               />
             </label>
             <label>
@@ -2278,24 +2460,6 @@ export function TimeSettings({ me, notify }: Props) {
                   overtimeRequiresApproval:
                     f.get("overtimeRequiresApproval") === "on",
                   singlePunchStatus: f.get("singlePunchStatus"),
-                  ...(hasFeature("face")
-                    ? {
-                        faceAttendanceEnabled:
-                          f.get("faceAttendanceEnabled") === "on",
-                        faceLivenessRequired:
-                          f.get("faceLivenessRequired") === "on",
-                        faceConfidenceThreshold: Number(
-                          f.get("faceConfidenceThreshold"),
-                        ),
-                        faceMaxFailedAttempts: Number(
-                          f.get("faceMaxFailedAttempts") || 5,
-                        ),
-                        faceLockoutMinutes: Number(
-                          f.get("faceLockoutMinutes") || 15,
-                        ),
-                        faceFallback: f.get("faceFallback"),
-                      }
-                    : {}),
                   compOffEnabled: f.get("compOffEnabled") === "on",
                   compOffExpiryDays: Number(f.get("compOffExpiryDays") || 90),
                   optionalHolidayLimit: Number(
@@ -2336,7 +2500,7 @@ export function TimeSettings({ me, notify }: Props) {
                 type="checkbox"
                 defaultChecked={s.policy.gpsTrackingEnabled}
               />
-              Record GPS at every check-in and check-out
+              Enable geotagging — record GPS at each punch
             </label>
             <p className="muted text-sm">
               Captures attendance locations for all employees, including field
@@ -2392,80 +2556,18 @@ export function TimeSettings({ me, notify }: Props) {
               />
               Overtime needs HR approval before it counts
             </label>
-            {hasFeature("face") && (
-              <>
-                <label className="flex items-center gap-2">
-                  <input
-                    name="faceAttendanceEnabled"
-                    type="checkbox"
-                    defaultChecked={s.policy.faceAttendanceEnabled}
-                  />
-                  Require face registration and matching for all employees
-                </label>
-                <label className="flex items-center gap-2">
-                  <input
-                    name="faceLivenessRequired"
-                    type="checkbox"
-                    checked
-                    readOnly
-                  />
-                  Require liveness verification
-                </label>
-                <label>
-                  Minimum face confidence (0.5–0.99)
-                  <input
-                    name="faceConfidenceThreshold"
-                    type="number"
-                    min="0.5"
-                    max="0.99"
-                    step="0.01"
-                    required
-                    defaultValue={s.policy.faceConfidenceThreshold}
-                  />
-                </label>
-                <label>
-                  Failed face scans before lockout
-                  <input
-                    name="faceMaxFailedAttempts"
-                    type="number"
-                    min="1"
-                    max="20"
-                    defaultValue={s.faceRules?.maxFailed ?? 5}
-                  />
-                </label>
-                <label>
-                  Lockout minutes
-                  <input
-                    name="faceLockoutMinutes"
-                    type="number"
-                    min="1"
-                    max="1440"
-                    defaultValue={s.faceRules?.lockoutMinutes ?? 15}
-                  />
-                </label>
-                <label>
-                  When face cannot be used
-                  <select
-                    name="faceFallback"
-                    defaultValue={s.faceRules?.fallback ?? "NONE"}
-                  >
-                    <option value="NONE">
-                      Face required (missed punch request or HR entry)
-                    </option>
-                    <option value="WEB">
-                      Allow web/GPS attendance, labelled face fallback
-                    </option>
-                  </select>
-                </label>
-              </>
-            )}
+            <p className="font-semibold mt-4">
+              Face and liveness verification are mandatory for every employee
+              punch. HR can enable or disable geofencing and geotagging, but
+              cannot disable face verification.
+            </p>
             <label className="flex items-center gap-2">
               <input
                 name="enabled"
                 type="checkbox"
                 defaultChecked={s.policy.geofenceEnabled}
               />
-              Require GPS inside the attendance area
+              Enable geofencing — require punches inside the attendance area
             </label>
             <div className="form-grid mt-4">
               <label className="flex items-center gap-2">

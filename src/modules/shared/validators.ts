@@ -167,7 +167,7 @@ export const employeeSchema = z
       .default("Active"),
     attendanceMode: z.enum(["DEFAULT", "GEOFENCE", "GPS", "OPEN"]).optional(),
     fieldTrackingAllowed: z.boolean().optional(),
-    faceRequired: z.boolean().optional(),
+    faceRequired: z.literal(true).optional(),
     probationDays: z.number().int().min(0).max(730).default(90),
     noticeDays: z.number().int().min(0).max(365).default(30),
     departmentId: text.optional().nullable(),

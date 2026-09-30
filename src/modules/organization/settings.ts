@@ -78,7 +78,7 @@ export async function settingsRoute(
         "content-type": logo.type,
         "x-content-type-options": "nosniff",
         "content-security-policy": "default-src 'none'",
-        "cache-control": "private, max-age=300",
+        "cache-control": "private, no-store",
       },
     });
   }

@@ -43,6 +43,7 @@ type CompanyRow = {
   lastLoginAt: string | null;
   name: string;
   code: string;
+  loginAccounts: { email: string; name: string }[];
   plan: string | null;
   planCode: string | null;
   storedStatus: string | null;
@@ -292,6 +293,7 @@ function Companies({
       <Table
         headers={[
           "Company",
+          "Client login email",
           "Plan",
           "Status",
           "Ends",
@@ -312,6 +314,14 @@ function Companies({
           <div key="c">
             <div className="font-semibold">{c.name}</div>
             <span className="muted text-xs">{c.code}</span>
+          </div>,
+          <div key="login" className="space-y-1">
+            {c.loginAccounts?.length ? c.loginAccounts.map((account) => (
+              <div key={account.email}>
+                <span className="break-all select-text">{account.email}</span>
+                <div className="muted text-xs">{account.name}</div>
+              </div>
+            )) : <span className="muted">No active client administrator</span>}
           </div>,
           c.plan ?? "None",
           <div key="s">

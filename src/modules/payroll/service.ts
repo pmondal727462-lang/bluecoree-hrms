@@ -53,15 +53,68 @@ export async function payrollRoute(
         403,
         "Your account is not linked to an employee record.",
       );
-    return db.payslip.findMany({
-      where: {
-        companyId: ctx.companyId,
-        ...(employee ? { employeeId: employee.id } : {}),
-      },
+    const query = z
+      .object({
+        period: z
+          .string()
+          .regex(/^\d{4}-(0[1-9]|1[0-2])$/)
+          .optional(),
+        search: z.string().trim().max(100).default(""),
+        page: z.coerce.number().int().min(1).max(100000).optional(),
+      })
+      .parse(Object.fromEntries(req.nextUrl.searchParams));
+    const start = query.period
+      ? new Date(`${query.period}-01T00:00:00Z`)
+      : undefined;
+    const end = start
+      ? new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1))
+      : undefined;
+    const where = {
+      companyId: ctx.companyId,
+      ...(employee ? { employeeId: employee.id } : {}),
+      ...(start ? { periodEnd: { gte: start, lt: end } } : {}),
+      ...(!own && query.search
+        ? {
+            employee: {
+              OR: [
+                {
+                  employeeCode: {
+                    contains: query.search,
+                    mode: "insensitive" as const,
+                  },
+                },
+                {
+                  firstName: {
+                    contains: query.search,
+                    mode: "insensitive" as const,
+                  },
+                },
+                {
+                  lastName: {
+                    contains: query.search,
+                    mode: "insensitive" as const,
+                  },
+                },
+              ],
+            },
+          }
+        : {}),
+    };
+    const items = await db.payslip.findMany({
+      where,
       select,
-      orderBy: { periodStart: "desc" },
-      take: 100,
+      orderBy: [{ periodEnd: "desc" }, { id: "asc" }],
+      take: query.page ? 25 : 100,
+      ...(query.page ? { skip: (query.page - 1) * 25 } : {}),
     });
+    return query.page
+      ? {
+          items,
+          total: await db.payslip.count({ where }),
+          page: query.page,
+          pageSize: 25,
+        }
+      : items;
   }
   requirePermission(ctx, "payroll.manage");
   if (req.method === "POST") {

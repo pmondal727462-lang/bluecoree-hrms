@@ -1,0 +1,58 @@
+name: bluecoree-face
+services:
+  compreface-postgres-db:
+    image: exadel/compreface-postgres-db:1.2.0
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${COMPREFACE_DB_PASSWORD:?Run start.ps1 first}
+      POSTGRES_DB: frs
+    volumes:
+      - face-db:/var/lib/postgresql/data
+  compreface-admin:
+    image: exadel/compreface-admin:1.2.0
+    restart: unless-stopped
+    depends_on: [compreface-postgres-db, compreface-api]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${COMPREFACE_DB_PASSWORD}
+      POSTGRES_URL: jdbc:postgresql://compreface-postgres-db:5432/frs
+      SPRING_PROFILES_ACTIVE: dev
+      ENABLE_EMAIL_SERVER: "false"
+      ADMIN_JAVA_OPTS: -Xmx1g
+      MAX_FILE_SIZE: 5MB
+      MAX_REQUEST_SIZE: 10MB
+  compreface-api:
+    image: exadel/compreface-api:1.2.0
+    restart: unless-stopped
+    depends_on: [compreface-postgres-db, compreface-core]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${COMPREFACE_DB_PASSWORD}
+      POSTGRES_URL: jdbc:postgresql://compreface-postgres-db:5432/frs
+      SPRING_PROFILES_ACTIVE: dev
+      API_JAVA_OPTS: -Xmx4g
+      SAVE_IMAGES_TO_DB: "false"
+      MAX_FILE_SIZE: 5MB
+      MAX_REQUEST_SIZE: 10MB
+      CONNECTION_TIMEOUT: 10000
+      READ_TIMEOUT: 60000
+  compreface-fe:
+    image: exadel/compreface-fe:1.2.0
+    restart: unless-stopped
+    depends_on: [compreface-api, compreface-admin]
+    ports: ["127.0.0.1:8000:80"]
+    environment:
+      CLIENT_MAX_BODY_SIZE: 10M
+      PROXY_READ_TIMEOUT: 60000ms
+      PROXY_CONNECT_TIMEOUT: 10000ms
+  compreface-core:
+    image: exadel/compreface-core:1.2.0
+    restart: unless-stopped
+    environment:
+      ML_PORT: 3000
+      IMG_LENGTH_LIMIT: 640
+      UWSGI_PROCESSES: 2
+      UWSGI_THREADS: 1
+volumes:
+  face-db:

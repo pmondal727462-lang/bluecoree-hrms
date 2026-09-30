@@ -56,7 +56,8 @@ export function CompanySettings({
           Company isolated
         </span>
       </div>
-      <section className="card max-w-4xl">
+      <CompanyLogoSettings me={me} notify={notify} />
+      <section className="card max-w-4xl mt-6">
         <div className="card-title">
           <h2 className="flex items-center gap-3">
             <Building2 size={18} />
@@ -132,6 +133,142 @@ export function CompanySettings({
 type CompanyPrefs = Record<string, string | number | boolean | null> & {
   hasLogo: boolean;
 };
+function CompanyLogoSettings({
+  me,
+  notify,
+}: {
+  me: Me;
+  notify: (s: string) => void;
+}) {
+  const client = useQueryClient();
+  const { data, error } = useQuery({
+    queryKey: ["company", "settings"],
+    queryFn: () => api<CompanyPrefs>("company/settings"),
+  });
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const canEdit = me.permissions.includes("company.write");
+  async function refresh() {
+    await Promise.all([
+      client.invalidateQueries({ queryKey: ["company", "settings"] }),
+      client.invalidateQueries({ queryKey: ["me"] }),
+    ]);
+  }
+  return (
+    <section className="card max-w-4xl">
+      <div className="card-title">
+        <h2>Company logo</h2>
+      </div>
+      <div className="p-6 space-y-4">
+        <p className="muted text-sm">
+          Upload your company logo to display it in your team's workspace. PNG
+          or JPEG, up to 256 KB.
+        </p>
+        {error && (
+          <p className="error" role="alert">
+            {error.message}
+          </p>
+        )}
+        {!data && !error && <p className="muted">Loading company logo…</p>}
+        {data && (
+          <div className="flex items-center gap-4 flex-wrap">
+            {data.hasLogo ? (
+              <img
+                src={`/api/company/settings/logo?v=${encodeURIComponent(String(data.updatedAt))}&company=${encodeURIComponent(me.companyId)}`}
+                alt={`${me.company.name} logo`}
+                className="h-20 max-w-60 object-contain rounded border border-[var(--border)] p-2"
+              />
+            ) : (
+              <span className="muted text-sm">No company logo uploaded.</span>
+            )}
+            {canEdit && (
+              <div className="space-y-3">
+                <label className="block" htmlFor="company-logo-upload">
+                  {data.hasLogo
+                    ? "Replace company logo"
+                    : "Upload company logo"}
+                </label>
+                <input
+                  id="company-logo-upload"
+                  type="file"
+                  accept="image/png,image/jpeg"
+                  className="max-w-xs"
+                  disabled={busy}
+                  onChange={async (e) => {
+                    const input = e.currentTarget;
+                    const file = input.files?.[0];
+                    if (!file) return;
+                    setMessage("");
+                    setBusy(true);
+                    try {
+                      if (!["image/png", "image/jpeg"].includes(file.type))
+                        throw new Error("Upload a PNG or JPEG image.");
+                      if (!file.size || file.size > 256 * 1024)
+                        throw new Error("Choose an image up to 256 KB.");
+                      const dataUrl = await new Promise<string>(
+                        (resolve, reject) => {
+                          const reader = new FileReader();
+                          reader.onload = () => resolve(String(reader.result));
+                          reader.onerror = () =>
+                            reject(new Error("Could not read the file."));
+                          reader.readAsDataURL(file);
+                        },
+                      );
+                      await api("company/settings/logo", {
+                        method: "POST",
+                        body: JSON.stringify({ dataUrl }),
+                      });
+                      await refresh();
+                      notify("Company logo updated.");
+                    } catch (err) {
+                      setMessage((err as Error).message);
+                    } finally {
+                      input.value = "";
+                      setBusy(false);
+                    }
+                  }}
+                />
+                {data.hasLogo && (
+                  <Button
+                    variant="outline"
+                    disabled={busy}
+                    onClick={async () => {
+                      setBusy(true);
+                      setMessage("");
+                      try {
+                        await api("company/settings/logo", {
+                          method: "DELETE",
+                        });
+                        await refresh();
+                        notify("Company logo removed.");
+                      } catch (err) {
+                        setMessage((err as Error).message);
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
+                  >
+                    Remove logo
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+        {busy && (
+          <p role="status" className="muted text-sm">
+            Updating company logo…
+          </p>
+        )}
+        {message && (
+          <p role="alert" className="error">
+            {message}
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
 const months = [
   "January",
   "February",
@@ -158,7 +295,6 @@ function CompanyPreferences({
     queryKey: ["company", "settings"],
     queryFn: () => api<CompanyPrefs>("company/settings"),
   });
-  const [logoKey, setLogoKey] = useState(0);
   if (error) return <div className="error mt-6">{error.message}</div>;
   if (!data) return null;
   const canEdit = me.permissions.includes("company.write");
@@ -168,53 +304,6 @@ function CompanyPreferences({
         <h2>Registration & preferences</h2>
       </div>
       <div className="p-6 space-y-6">
-        <div className="flex items-center gap-4 flex-wrap">
-          {data.hasLogo ? (
-            <img
-              key={logoKey}
-              src={`/api/company/settings/logo?v=${logoKey}`}
-              alt="Company logo"
-              className="h-14 w-auto rounded border border-[var(--border)]"
-            />
-          ) : (
-            <span className="muted text-sm">
-              No company logo. It appears on payslips and documents.
-            </span>
-          )}
-          {canEdit && (
-            <input
-              type="file"
-              accept="image/png,image/jpeg"
-              className="max-w-xs"
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                try {
-                  const dataUrl = await new Promise<string>(
-                    (resolve, reject) => {
-                      const r = new FileReader();
-                      r.onload = () => resolve(String(r.result));
-                      r.onerror = () =>
-                        reject(new Error("Could not read the file."));
-                      r.readAsDataURL(file);
-                    },
-                  );
-                  await api("company/settings/logo", {
-                    method: "POST",
-                    body: JSON.stringify({ dataUrl }),
-                  });
-                  setLogoKey((k) => k + 1);
-                  await client.invalidateQueries({
-                    queryKey: ["company", "settings"],
-                  });
-                  notify("Logo updated.");
-                } catch (err) {
-                  notify((err as Error).message);
-                }
-              }}
-            />
-          )}
-        </div>
         <RecordForm
           key={String(data.updatedAt)}
           initial={data}
@@ -248,18 +337,6 @@ function CompanyPreferences({
                 label: m,
               })),
             },
-            {
-              key: "payrollCycle",
-              label: "Payroll cycle",
-              type: "select",
-              required: true,
-              options: [{ value: "MONTHLY", label: "Monthly" }],
-            },
-            {
-              key: "payrollCutoffDay",
-              label: "Attendance cut-off day (optional)",
-              type: "number",
-            },
           ]}
           onSave={async (v) => {
             if (!canEdit) return;
@@ -275,10 +352,8 @@ function CompanyPreferences({
                 currency: v.currency,
                 dateFormat: v.dateFormat,
                 financialYearStartMonth: Number(v.financialYearStartMonth),
-                payrollCycle: v.payrollCycle,
-                payrollCutoffDay: v.payrollCutoffDay
-                  ? Number(v.payrollCutoffDay)
-                  : null,
+                payrollCycle: data.payrollCycle,
+                payrollCutoffDay: data.payrollCutoffDay ?? null,
               }),
             });
             await client.invalidateQueries({ queryKey: ["company"] });

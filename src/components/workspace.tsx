@@ -42,6 +42,8 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { moduleAllowed } from "@/lib/module-access";
+import { employeePages, isEmployeePortal } from "@/lib/employee-access";
+import { EmployeeLoginFace } from "./employee-login-face";
 import type { Me } from "@/types/ui";
 import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
@@ -70,7 +72,6 @@ import { RoleManager } from "./role-manager";
 import { AttendancePage, LeavePage, TimeSettings } from "./time-management";
 import { HRCopilot } from "./hr-copilot";
 import { Payslips } from "./payslips";
-import { FaceRegistration } from "./face-registration";
 import { DevicesPage } from "./platform";
 import { IntegrationsPage } from "./integrations";
 import { SecurityPage, SecuritySetupRequired } from "./security";
@@ -356,7 +357,9 @@ export function Workspace({ module }: { module: string }) {
       </main>
     );
   const inPlan = (key: string) => moduleAllowed(me.subscription, key);
+  const employeePortal = isEmployeePortal(me);
   const canOpen = (n: (typeof nav)[number]) =>
+    (!employeePortal || Object.hasOwn(employeePages, n.key)) &&
     inPlan(n.key) &&
     (!n.permission ||
       me.permissions.includes(n.permission) ||
@@ -381,16 +384,18 @@ export function Workspace({ module }: { module: string }) {
         )));
   const currentNav = nav.find((n) => n.key === module);
   const canAsk =
+    !employeePortal &&
     !me.isSuperAdmin &&
     me.permissions.includes("ai.use") &&
     inPlan("hr-copilot") &&
     !(me as Me & { faceEnrollmentRequired?: boolean }).faceEnrollmentRequired;
   const denied =
+    (employeePortal && !Object.hasOwn(employeePages, module)) ||
     (currentNav && !canOpen(currentNav)) ||
     (["companies", "platform", "admin"].includes(module) && !me.platformRole) ||
     (module === "companies" && !me.isSuperAdmin);
   return (
-    <>
+    <EmployeeLoginFace me={me}>
       {mobile && (
         <button
           aria-label="Close navigation"
@@ -403,7 +408,11 @@ export function Workspace({ module }: { module: string }) {
           href={me.isSuperAdmin ? "/admin" : "/home"}
           className="brand shrink-0"
         >
-          <BrandLogo branding={me.branding} />
+          <BrandLogo
+            branding={me.branding}
+            companyLogoUrl={me.companyLogoUrl}
+            companyName={me.company.name}
+          />
         </Link>
         <div className="mx-5 mb-7 p-3 rounded-lg border border-[var(--border)] flex gap-3 items-center">
           <div className="size-8 shrink-0 rounded-lg bg-[var(--muted)] grid place-items-center">
@@ -414,6 +423,7 @@ export function Workspace({ module }: { module: string }) {
             <p className="muted text-[10px] mt-1">
               {me.company.code} · Workspace
             </p>
+            {me.subscription && <p className="text-xs font-semibold mt-1">{me.subscription.plan.name} plan</p>}
           </div>
         </div>
         <p className="eyebrow px-8 mb-3">Workspace</p>
@@ -435,7 +445,7 @@ export function Workspace({ module }: { module: string }) {
                 className={`nav-link ${module === n.key ? "active" : ""}`}
               >
                 <n.icon size={17} />
-                {n.label}
+                {employeePortal ? employeePages[n.key] : n.label}
               </Link>
             ))}
           {me.platformRole && (
@@ -491,7 +501,9 @@ export function Workspace({ module }: { module: string }) {
             <span className="text-xs font-semibold">
               {me.isSuperAdmin
                 ? "Management"
-                : nav.find((n) => n.key === module)?.label || "Companies"}
+                : (employeePortal
+                    ? employeePages[module]
+                    : nav.find((n) => n.key === module)?.label) || "Workspace"}
             </span>
           </div>
           <div className="flex items-center gap-5">
@@ -548,12 +560,11 @@ export function Workspace({ module }: { module: string }) {
           </div>
         </header>
         <main className="content">
-          {!me.isSuperAdmin && <SubscriptionBanner me={me} />}
+          {!me.isSuperAdmin && !employeePortal && (
+            <SubscriptionBanner me={me} />
+          )}
           {me.passwordChangeRequired || me.mfaSetupRequired ? (
             <SecuritySetupRequired me={me} />
-          ) : (me as Me & { faceEnrollmentRequired?: boolean })
-              .faceEnrollmentRequired ? (
-            <FaceRegistration />
           ) : me.isSuperAdmin ? (
             <PlatformPage me={me} notify={setToast} />
           ) : denied ? (
@@ -596,7 +607,11 @@ export function Workspace({ module }: { module: string }) {
           ) : module === "companies" ? (
             <CompanyList notify={setToast} />
           ) : module === "home" ? (
-            <HomePage me={me} notify={setToast} />
+            employeePortal ? (
+              <AttendancePage me={me} notify={setToast} punchOnly />
+            ) : (
+              <HomePage me={me} notify={setToast} />
+            )
           ) : module === "documents" ? (
             <DocumentsPage me={me} notify={setToast} />
           ) : module === "helpdesk" ? (
@@ -653,6 +668,6 @@ export function Workspace({ module }: { module: string }) {
           {toast}
         </div>
       )}
-    </>
+    </EmployeeLoginFace>
   );
 }

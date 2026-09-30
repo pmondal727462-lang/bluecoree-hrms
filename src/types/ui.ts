@@ -29,8 +29,9 @@ export type Me = {
     graceEndsAt: string | null;
   } | null;
   branding?: Branding | null;
+  companyLogoUrl?: string | null;
   platformRole?: "super" | "staff" | null;
-  company: Named & { code: string };
+  company: Named & { code: string; timezone?: string; dateFormat?: string };
 };
 export type Row = { id: string; [key: string]: unknown };
 export type PageData = {

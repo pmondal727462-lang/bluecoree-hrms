@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, withSystem, withTenant } from "@/lib/db";
+import { employeeApiAllowed, isEmployeePortal } from "@/lib/employee-access";
 import { errorResponse, AppError, logger } from "@/lib/errors";
 import {
   authenticate,
@@ -96,6 +97,7 @@ import {
 } from "@/modules/biometric/service";
 import { notificationsRoute } from "@/modules/notifications/service";
 import { home } from "@/modules/dashboard/home";
+import { subscriptionPermissions } from "@/lib/module-access";
 import { recordServerError } from "@/modules/platform/health";
 import { supportRoute } from "@/modules/support/service";
 import {
@@ -225,6 +227,12 @@ async function route(
         : null;
     if (apiKey) return ok(await publicApi(req, apiKey, path[1], path[2]));
     const ctx = await authenticate(req);
+    if (isEmployeePortal(ctx) && !employeeApiAllowed(path))
+      throw new AppError(
+        403,
+        "This service is not available in the employee portal.",
+        "FORBIDDEN",
+      );
     return await withTenant(ctx.companyId, async () => {
       if (route === "celebrations") return ok(await celebrations(req, ctx));
       if (path[0] === "references" && path.length === 2 && method === "GET")
@@ -256,7 +264,8 @@ async function route(
         await consumeQuota(ctx.companyId, "ai_requests");
       if (route === "subscription")
         return ok(await subscriptionRoute(req, ctx));
-      if (path[0] === "workforce") return ok(await workforceRoute(req, ctx, path));
+      if (path[0] === "workforce")
+        return ok(await workforceRoute(req, ctx, path));
       if (route === "setup-progress" && method === "GET")
         return ok(await setupProgress(ctx));
       if (route === "setup-progress/dismiss" && method === "POST")
@@ -326,7 +335,7 @@ async function route(
           path[3] === "pdf" &&
           method === "GET"
         )
-          return payslipPdf(ctx, path[2]);
+          return await payslipPdf(ctx, path[2]);
         // Stable mobile aliases for the self-service modules; the same
         // permission and plan checks apply as on the web routes.
         const aliases: Record<
@@ -359,7 +368,10 @@ async function route(
         const result = await integrationsRoute(req, ctx, path);
         return result instanceof NextResponse ? result : ok(result);
       }
-      if (path[0] === "time") return ok(await timeRoute(req, ctx, path));
+      if (path[0] === "time") {
+        const result = await timeRoute(req, ctx, path);
+        return result instanceof NextResponse ? result : ok(result);
+      }
       const modules: Record<
         string,
         (r: NextRequest, c: typeof ctx, p: string[]) => Promise<unknown>
@@ -386,6 +398,7 @@ async function route(
         path[0] === "payroll" &&
         [
           "statutory",
+          "period-policy",
           "statutory-rules",
           "structures",
           "runs",
@@ -402,7 +415,7 @@ async function route(
         path[3] === "pdf" &&
         method === "GET"
       )
-        return payslipPdf(ctx, path[2]);
+        return await payslipPdf(ctx, path[2]);
       if (path[0] === "payroll" && (path.length === 1 || path.length === 2))
         return ok(await payrollRoute(req, ctx, path[1]));
       if (route === "auth/password" && method === "PUT")
@@ -419,15 +432,20 @@ async function route(
       if (route === "auth/me" && method === "GET") {
         const c = await db.company.findUniqueOrThrow({
           where: { id: ctx.companyId },
-          select: { id: true, name: true, code: true },
+          select: { id: true, name: true, code: true, timezone: true },
         });
-        const [subscription, branding] = await Promise.all([
+        const [subscription, branding, settings] = await Promise.all([
           subscriptionSummary(ctx.companyId),
           companyBranding(ctx.companyId),
+          db.companySetting.findUnique({
+            where: { companyId: ctx.companyId },
+            select: { logoType: true, updatedAt: true, dateFormat: true },
+          }),
         ]);
         return ok({
           ...ctx,
-          company: c,
+          permissions: ctx.isSuperAdmin ? ctx.permissions : subscriptionPermissions(ctx.permissions, subscription),
+          company: { ...c, dateFormat: settings?.dateFormat ?? "DD/MM/YYYY" },
           subscription: subscription && {
             status: subscription.status,
             plan: subscription.plan,
@@ -435,6 +453,9 @@ async function route(
             graceEndsAt: subscription.graceEndsAt,
           },
           branding,
+          companyLogoUrl: settings?.logoType
+            ? `/api/company/settings/logo?v=${settings.updatedAt.getTime()}&company=${encodeURIComponent(ctx.companyId)}`
+            : null,
           platformRole: await platformAccess(ctx),
           faceEnrollmentRequired: (await faceStatus(ctx.userId, ctx.companyId))
             .enrollmentRequired,

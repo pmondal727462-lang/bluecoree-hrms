@@ -2,19 +2,24 @@ import Image from "next/image";
 import type { Branding } from "@/types/ui";
 import { product } from "@/config/product";
 
-// A company's own logo or name when white-label branding is enabled.
+// The workspace logo takes precedence over optional white-label branding.
 export function BrandLogo({
   branding,
+  companyLogoUrl,
+  companyName,
   width = 200,
 }: {
   branding?: Branding | null;
+  companyLogoUrl?: string | null;
+  companyName?: string;
   width?: number;
 }) {
-  if (branding?.logoUrl)
+  const logoUrl = companyLogoUrl || branding?.logoUrl;
+  if (logoUrl)
     return (
       <img
-        src={branding.logoUrl}
-        alt={branding.brandName ?? "Company logo"}
+        src={logoUrl}
+        alt={companyName ?? branding?.brandName ?? "Company logo"}
         style={{ width, maxHeight: width / 2, objectFit: "contain" }}
         className="h-auto max-w-full"
       />

@@ -1279,6 +1279,8 @@ model PayrollRun {
   id             String           @id @default(cuid())
   companyId      String
   period         String
+  periodStart    DateTime?        @db.Date
+  periodEnd      DateTime?        @db.Date
   status         String           @default("DRAFT")
   totals         Json?
   createdBy      String
@@ -1297,6 +1299,7 @@ model PayrollRun {
   loanRepayments LoanRepayment[]
 
   @@unique([companyId, period])
+  @@index([companyId, periodStart, periodEnd])
   @@unique([id, companyId])
   @@map("payroll_runs")
 }
@@ -1628,6 +1631,8 @@ model CompanySetting {
   financialYearStartMonth Int      @default(4)
   payrollCycle            String   @default("MONTHLY")
   payrollCutoffDay        Int?
+  salaryPeriodMode       String   @default("CALENDAR_MONTH")
+  salaryBoundaryDay      Int      @default(1)
   logoData                Bytes?
   logoType                String?
   updatedAt               DateTime @updatedAt

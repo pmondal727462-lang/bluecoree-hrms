@@ -34,7 +34,18 @@ export function moduleAllowed(subscription: Subscription, module: string) {
 }
 export function permissionFeature(permission: string) {
   const module = permission.split(".")[0];
+  if (module === "ai") return "ai";
+  if (module === "fieldtracking") return "livetracking";
+  if (module === "biometric") return "biometric";
   return module === "timeoff" || module === "time"
     ? "attendance"
     : moduleFeatures[module];
+}
+// Role permissions never override a subscription. This also keeps module
+// buttons and self-service pages aligned with the sidebar.
+export function subscriptionPermissions(grants: string[], subscription: Subscription) {
+  return grants.filter((permission) => {
+    const feature = permissionFeature(permission);
+    return !feature || !!(subscription && subscription.status !== "EXPIRED" && subscription.plan.features.includes(feature));
+  });
 }
